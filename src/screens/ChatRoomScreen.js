@@ -10,20 +10,19 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
-import { useAppData } from "../context/AppDataContext";
+import { useChatMessages } from "../hooks/useChatMessages";
+import { sendMessage } from "../firebase/chats";
 import { colors } from "../theme";
 
 export default function ChatRoomScreen({ route }) {
   const { matchId, profile } = route.params;
   const { currentUser } = useAuth();
-  const { getChatMessages, sendMessage } = useAppData();
+  const messages = useChatMessages(matchId);
   const [text, setText] = useState("");
-
-  const messages = getChatMessages(matchId);
 
   function handleSend() {
     if (!text.trim()) return;
-    sendMessage(matchId, text);
+    sendMessage(matchId, currentUser.id, text);
     setText("");
   }
 

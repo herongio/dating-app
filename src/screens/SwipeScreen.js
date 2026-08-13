@@ -1,27 +1,36 @@
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
-import { useAppData } from "../context/AppDataContext";
+import { Alert, ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useAuth } from "../context/AuthContext";
+import { useDiscoverPool } from "../hooks/useDiscoverPool";
+import { performSwipe } from "../firebase/swipes";
 import SwipeCard from "../components/SwipeCard";
 import { colors } from "../theme";
 
 export default function SwipeScreen() {
-  const { getDiscoverPool, swipe } = useAppData();
-  const pool = getDiscoverPool();
+  const { currentUser } = useAuth();
+  const { profiles, loading, removeProfile } = useDiscoverPool(currentUser);
 
-  function handleSwiped(profile, direction) {
-    const result = swipe(profile, direction);
-    if (direction === "like" && result.matched) {
-      Alert.alert("매칭 성공! 💕", `${profile.name}님과 매칭됐어요. 채팅 탭에서 대화를 시작해보세요.`);
+  async function handleSwiped(profile, direction) {
+    removeProfile(profile.id);
+    try {
+      const matched = await performSwipe(currentUser.id, profile.id, direction);
+      if (direction === "like" && matched) {
+        Alert.alert("매칭 성공! 💕", `${profile.name}님과 매칭됐어요. 채팅 탭에서 대화를 시작해보세요.`);
+      }
+    } catch {
+      Alert.alert("오류", "스와이프를 처리하지 못했어요. 다시 시도해주세요.");
     }
   }
 
-  const visible = pool.slice(0, 2);
+  const visible = profiles.slice(0, 2);
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>둘러보기</Text>
 
       <View style={styles.deck}>
-        {visible.length === 0 ? (
+        {loading ? (
+          <ActivityIndicator color={colors.primary} size="large" />
+        ) : visible.length === 0 ? (
           <Text style={styles.empty}>더 이상 프로필이 없어요.{"\n"}나중에 다시 확인해보세요!</Text>
         ) : (
           visible
@@ -76,6 +85,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
     justifyContent: "center",
+    alignItems: "center",
   },
   empty: {
     fontSize: 16,

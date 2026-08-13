@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    // matchId / swipeId / friendRequest doc ids are "{uidA}_{uidB}" —
+    // Firebase Auth uids never contain "_", so splitting is safe.
+    function idParts(id) {
+      return id.split('_');
+    }
+
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create, update: if isSelf(uid);
+      allow delete: if false;
+    }
+
+    match /swipes/{swipeId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.swiperId == request.auth.uid
+        && swipeId == request.resource.data.swiperId + '_' + request.resource.data.targetId;
+      allow update, delete: if false;
+    }
+
+    match /matches/{matchId} {
+      allow read: if isSignedIn() && request.auth.uid in idParts(matchId);
+      allow create: if isSignedIn()
+        && request.auth.uid in idParts(matchId)
+        && request.resource.data.participants.hasAll(idParts(matchId));
+      allow update: if isSignedIn() && request.auth.uid in idParts(matchId);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && request.auth.uid in idParts(matchId);
+        allow create: if isSignedIn()
+          && request.auth.uid in idParts(matchId)
+          && request.resource.data.senderId == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+
+    match /friendRequests/{requestId} {
+      allow read: if isSignedIn()
+        && (resource.data.fromUserId == request.auth.uid || resource.data.toUserId == request.auth.uid);
+      allow create: if isSignedIn()
+        && request.resource.data.fromUserId == request.auth.uid
+        && requestId == request.resource.data.fromUserId + '_' + request.resource.data.toUserId;
+      allow update: if isSignedIn()
+        && resource.data.toUserId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'respondedAt']);
+      allow delete: if false;
+    }
+  }
+}

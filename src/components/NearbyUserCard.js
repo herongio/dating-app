@@ -17,6 +17,10 @@ export default function NearbyUserCard({ user, status, onSendRequest }) {
         <View style={[styles.requestButton, styles.matchedButton]}>
           <Text style={styles.matchedText}>매칭됨</Text>
         </View>
+      ) : status === "pending" ? (
+        <View style={[styles.requestButton, styles.pendingButton]}>
+          <Text style={styles.pendingText}>신청됨</Text>
+        </View>
       ) : (
         <Pressable style={styles.requestButton} onPress={onSendRequest}>
           <Text style={styles.requestText}>친구 신청</Text>
@@ -75,6 +79,16 @@ const styles = StyleSheet.create({
   },
   matchedText: {
     color: colors.success,
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  pendingButton: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  pendingText: {
+    color: colors.textFaint,
     fontWeight: "600",
     fontSize: 13,
   },

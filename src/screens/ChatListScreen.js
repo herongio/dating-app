@@ -1,10 +1,11 @@
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { useAppData } from "../context/AppDataContext";
+import { useAuth } from "../context/AuthContext";
+import { useMatches } from "../hooks/useMatches";
 import { colors } from "../theme";
 
 export default function ChatListScreen({ navigation }) {
-  const { getMatches, getChatMessages } = useAppData();
-  const matches = getMatches();
+  const { currentUser } = useAuth();
+  const matches = useMatches(currentUser);
 
   return (
     <View style={styles.container}>
@@ -14,26 +15,22 @@ export default function ChatListScreen({ navigation }) {
         data={matches}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
-        renderItem={({ item }) => {
-          const messages = getChatMessages(item.id);
-          const lastMessage = messages[messages.length - 1];
-          return (
-            <Pressable
-              style={styles.row}
-              onPress={() =>
-                navigation.navigate("ChatRoom", { matchId: item.id, profile: item.profile })
-              }
-            >
-              <Text style={styles.avatar}>{item.profile.avatar}</Text>
-              <View style={styles.info}>
-                <Text style={styles.name}>{item.profile.name}</Text>
-                <Text style={styles.preview} numberOfLines={1}>
-                  {lastMessage ? lastMessage.text : "매칭됐어요! 먼저 인사해보세요 👋"}
-                </Text>
-              </View>
-            </Pressable>
-          );
-        }}
+        renderItem={({ item }) => (
+          <Pressable
+            style={styles.row}
+            onPress={() =>
+              navigation.navigate("ChatRoom", { matchId: item.id, profile: item.profile })
+            }
+          >
+            <Text style={styles.avatar}>{item.profile.avatar}</Text>
+            <View style={styles.info}>
+              <Text style={styles.name}>{item.profile.name}</Text>
+              <Text style={styles.preview} numberOfLines={1}>
+                {item.lastMessage ?? "매칭됐어요! 먼저 인사해보세요 👋"}
+              </Text>
+            </View>
+          </Pressable>
+        )}
         ListEmptyComponent={
           <Text style={styles.empty}>
             아직 매칭이 없어요.{"\n"}둘러보기나 내 주변 탭에서 매칭을 만들어보세요!

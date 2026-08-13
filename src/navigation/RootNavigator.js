@@ -1,7 +1,6 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "../context/AuthContext";
-import { AppDataProvider } from "../context/AppDataContext";
 import AuthStack from "./AuthStack";
 import MainTabs from "./MainTabs";
 import { colors } from "../theme";
@@ -19,13 +18,7 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer>
-      {currentUser ? (
-        <AppDataProvider>
-          <MainTabs />
-        </AppDataProvider>
-      ) : (
-        <AuthStack />
-      )}
+      {currentUser ? <MainTabs /> : <AuthStack />}
     </NavigationContainer>
   );
 }
