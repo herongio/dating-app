@@ -9,11 +9,22 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "내 주변 이상형을 찾기 위해 위치 정보를 사용합니다."
+      }
     },
     "android": {},
     "web": {
       "bundler": "metro"
-    }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "내 주변 이상형을 찾기 위해 위치 정보를 사용합니다."
+        }
+      ]
+    ]
   }
 }
