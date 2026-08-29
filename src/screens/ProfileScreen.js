@@ -1,6 +1,20 @@
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { useAuth } from "../context/AuthContext";
+import { useBlocks } from "../context/BlockContext";
+import { useBlockedProfiles } from "../hooks/useBlockedProfiles";
+import { deleteProfilePhoto, uploadProfilePhoto } from "../firebase/storage";
+import Avatar from "../components/Avatar";
 import { colors } from "../theme";
 
 const GENDER_OPTIONS = [
@@ -16,11 +30,14 @@ const PREFERENCE_OPTIONS = [
 
 export default function ProfileScreen() {
   const { currentUser, updateProfile, logout } = useAuth();
+  const { unblock } = useBlocks();
+  const blockedProfiles = useBlockedProfiles();
   const [name, setName] = useState(currentUser.name);
   const [age, setAge] = useState(String(currentUser.age));
   const [bio, setBio] = useState(currentUser.bio);
   const [gender, setGender] = useState(currentUser.gender);
   const [preferredGender, setPreferredGender] = useState(currentUser.preferredGender);
+  const [uploading, setUploading] = useState(false);
 
   function handleSave() {
     if (!name.trim() || !age.trim()) {
@@ -31,10 +48,77 @@ export default function ProfileScreen() {
     Alert.alert("저장 완료", "프로필이 업데이트됐어요.");
   }
 
+  function handlePhotoPress() {
+    if (!currentUser.photoURL) {
+      pickPhoto();
+      return;
+    }
+    Alert.alert("프로필 사진", null, [
+      { text: "사진 변경", onPress: pickPhoto },
+      { text: "사진 삭제", style: "destructive", onPress: removePhoto },
+      { text: "취소", style: "cancel" },
+    ]);
+  }
+
+  async function pickPhoto() {
+    const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!granted) {
+      Alert.alert("권한 필요", "프로필 사진을 올리려면 사진 접근 권한이 필요해요.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+    });
+    if (result.canceled) return;
+
+    setUploading(true);
+    try {
+      const photoURL = await uploadProfilePhoto(currentUser.id, result.assets[0].uri);
+      await updateProfile({ photoURL });
+    } catch {
+      Alert.alert("오류", "사진을 업로드하지 못했어요. 다시 시도해주세요.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function removePhoto() {
+    setUploading(true);
+    try {
+      await deleteProfilePhoto(currentUser.id);
+      await updateProfile({ photoURL: null });
+    } catch {
+      Alert.alert("오류", "사진을 삭제하지 못했어요. 다시 시도해주세요.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function confirmUnblock(profile) {
+    Alert.alert(`${profile.name}님 차단 해제`, "다시 서로의 프로필이 보이게 돼요.", [
+      { text: "취소", style: "cancel" },
+      { text: "해제", onPress: () => unblock(profile.id) },
+    ]);
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>내 프로필</Text>
-      <Text style={styles.avatar}>{currentUser.avatar}</Text>
+
+      <Pressable onPress={handlePhotoPress} disabled={uploading} style={styles.photoButton}>
+        <Avatar user={currentUser} size={120} />
+        {uploading && (
+          <View style={styles.photoOverlay}>
+            <ActivityIndicator color="#fff" />
+          </View>
+        )}
+      </Pressable>
+      <Text style={styles.photoHint}>
+        {currentUser.photoURL ? "사진을 눌러 변경하거나 삭제하세요" : "사진을 눌러 프로필 사진을 올려보세요"}
+      </Text>
 
       <Field label="이름">
         <TextInput style={styles.input} value={name} onChangeText={setName} />
@@ -73,6 +157,20 @@ export default function ProfileScreen() {
       <Pressable style={styles.saveButton} onPress={handleSave}>
         <Text style={styles.saveText}>저장</Text>
       </Pressable>
+
+      {blockedProfiles.length > 0 && (
+        <Field label={`차단한 사용자 (${blockedProfiles.length})`}>
+          {blockedProfiles.map((profile) => (
+            <View key={profile.id} style={styles.blockedRow}>
+              <Avatar user={profile} size={36} />
+              <Text style={styles.blockedName}>{profile.name}</Text>
+              <Pressable style={styles.unblockButton} onPress={() => confirmUnblock(profile)}>
+                <Text style={styles.unblockText}>차단 해제</Text>
+              </Pressable>
+            </View>
+          ))}
+        </Field>
+      )}
 
       <Pressable style={styles.logoutButton} onPress={logout}>
         <Text style={styles.logoutText}>로그아웃</Text>
@@ -124,9 +222,21 @@ const styles = StyleSheet.create({
     color: colors.text,
     alignSelf: "flex-start",
   },
-  avatar: {
-    fontSize: 72,
-    marginVertical: 16,
+  photoButton: {
+    marginTop: 16,
+  },
+  photoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 60,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoHint: {
+    fontSize: 13,
+    color: colors.textFaint,
+    marginTop: 8,
+    marginBottom: 16,
   },
   field: {
     width: "100%",
@@ -178,18 +288,34 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: "center",
     marginTop: 8,
+    marginBottom: 24,
   },
   saveText: {
     color: "#fff",
     fontWeight: "600",
     fontSize: 16,
   },
-  logoutButton: {
-    marginTop: 16,
-    paddingVertical: 10,
+  blockedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 8,
   },
-  logoutText: {
-    color: colors.textFaint,
-    fontSize: 14,
+  blockedName: {
+    flex: 1,
+    fontSize: 15,
+    color: colors.text,
+  },
+  unblockButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  unblockText: {
+    fontSize: 13,
+    color: colors.textMuted,
+    fontWeight: "600",
   },
 });

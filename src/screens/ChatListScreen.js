@@ -1,11 +1,10 @@
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { useAuth } from "../context/AuthContext";
-import { useMatches } from "../hooks/useMatches";
+import { useMatches } from "../context/MatchesContext";
+import Avatar from "../components/Avatar";
 import { colors } from "../theme";
 
 export default function ChatListScreen({ navigation }) {
-  const { currentUser } = useAuth();
-  const matches = useMatches(currentUser);
+  const matches = useMatches();
 
   return (
     <View style={styles.container}>
@@ -22,7 +21,7 @@ export default function ChatListScreen({ navigation }) {
               navigation.navigate("ChatRoom", { matchId: item.id, profile: item.profile })
             }
           >
-            <Text style={styles.avatar}>{item.profile.avatar}</Text>
+            <Avatar user={item.profile} size={48} />
             <View style={styles.info}>
               <Text style={styles.name}>{item.profile.name}</Text>
               <Text style={styles.preview} numberOfLines={1}>
@@ -64,9 +63,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     gap: 14,
-  },
-  avatar: {
-    fontSize: 36,
   },
   info: {
     flex: 1,

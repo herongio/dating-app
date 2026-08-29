@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -8,7 +8,9 @@ import {
 import { serverTimestamp } from "firebase/firestore";
 import { auth } from "../firebase/config";
 import { createUserProfile, getUserProfile, updateUserProfile } from "../firebase/users";
-import { getCurrentLocation } from "../utils/location";
+import { clearPushToken, savePushToken } from "../firebase/pushTokens";
+import { getCurrentLocation, locationFields } from "../utils/location";
+import { registerForPushNotifications } from "../utils/notifications";
 import { friendlyAuthError } from "../utils/firebaseErrors";
 
 const AuthContext = createContext(null);
@@ -21,19 +23,41 @@ export function AuthProvider({ children }) {
   // reading the profile doc before that write has landed.
   const isSigningUp = useRef(false);
 
+  // People move between sessions and Expo push tokens rotate, so refresh
+  // both after sign-in. Neither blocks the UI, and neither is fatal: a stale
+  // location just misplaces you in nearby search, a missing token means no
+  // pushes on this device.
+  const syncDeviceState = useCallback(async (uid) => {
+    try {
+      const token = await registerForPushNotifications();
+      if (token) await savePushToken(uid, token);
+    } catch {
+      // Ignored — pushes are best-effort.
+    }
+    try {
+      const updates = locationFields(await getCurrentLocation());
+      await updateUserProfile(uid, updates);
+      setCurrentUser((prev) => (prev?.id === uid ? { ...prev, ...updates } : prev));
+    } catch {
+      // Ignored — the profile keeps its last known location.
+    }
+  }, []);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (isSigningUp.current) return;
       if (firebaseUser) {
         const profile = await getUserProfile(firebaseUser.uid);
         setCurrentUser(profile ? { ...profile, email: firebaseUser.email } : null);
+        setIsReady(true);
+        if (profile) syncDeviceState(firebaseUser.uid);
       } else {
         setCurrentUser(null);
+        setIsReady(true);
       }
-      setIsReady(true);
     });
     return unsubscribe;
-  }, []);
+  }, [syncDeviceState]);
 
   async function signUp({ email, password, name, age, gender, preferredGender, bio }) {
     const normalizedEmail = email.trim().toLowerCase();
@@ -45,7 +69,6 @@ export function AuthProvider({ children }) {
       } catch (err) {
         throw friendlyAuthError(err);
       }
-      const location = await getCurrentLocation();
       const profile = {
         name: name.trim(),
         age: Number(age),
@@ -54,11 +77,13 @@ export function AuthProvider({ children }) {
         bio: bio.trim(),
         interests: [],
         avatar: gender === "female" ? "👩" : "🧑",
-        location,
+        photoURL: null,
+        ...locationFields(await getCurrentLocation()),
         createdAt: serverTimestamp(),
       };
       await createUserProfile(credential.user.uid, profile);
       setCurrentUser({ id: credential.user.uid, email: normalizedEmail, ...profile });
+      syncDeviceState(credential.user.uid);
     } finally {
       isSigningUp.current = false;
     }
@@ -73,6 +98,15 @@ export function AuthProvider({ children }) {
   }
 
   async function logout() {
+    // Drop the token first, so the next person to sign in on this device
+    // doesn't receive the previous user's notifications.
+    if (currentUser) {
+      try {
+        await clearPushToken(currentUser.id);
+      } catch {
+        // Ignored — signing out matters more than tidying the token.
+      }
+    }
     await signOut(auth);
   }
 

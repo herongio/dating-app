@@ -1,4 +1,4 @@
-import { collection, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "./config";
 
 const matchesCol = collection(db, "matches");
@@ -7,16 +7,9 @@ export function matchIdFor(uidA, uidB) {
   return [uidA, uidB].sort().join("_");
 }
 
-export async function createMatchIfNeeded(uidA, uidB, source) {
-  const id = matchIdFor(uidA, uidB);
-  await setDoc(
-    doc(matchesCol, id),
-    { participants: [uidA, uidB].sort(), source, matchedAt: serverTimestamp() },
-    { merge: true }
-  );
-  return id;
-}
-
+// Match docs are created by Cloud Functions, never by the client — see
+// functions/index.js. This subscription is how a new match reaches the UI.
+//
 // Sorts client-side (instead of orderBy in the query) so this doesn't
 // require a composite Firestore index to be created for participants +
 // matchedAt.

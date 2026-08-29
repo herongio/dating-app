@@ -1,10 +1,12 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import Avatar from "./Avatar";
+import ModerationButton from "./ModerationButton";
 import { colors } from "../theme";
 
 export default function NearbyUserCard({ user, status, onSendRequest }) {
   return (
     <View style={styles.card}>
-      <Text style={styles.avatar}>{user.avatar}</Text>
+      <Avatar user={user} size={52} />
       <View style={styles.info}>
         <Text style={styles.name}>
           {user.name}, {user.age}
@@ -13,19 +15,22 @@ export default function NearbyUserCard({ user, status, onSendRequest }) {
         <Text style={styles.distance}>📍 {user.distanceKm.toFixed(1)}km 근처</Text>
       </View>
 
-      {status === "matched" ? (
-        <View style={[styles.requestButton, styles.matchedButton]}>
-          <Text style={styles.matchedText}>매칭됨</Text>
-        </View>
-      ) : status === "pending" ? (
-        <View style={[styles.requestButton, styles.pendingButton]}>
-          <Text style={styles.pendingText}>신청됨</Text>
-        </View>
-      ) : (
-        <Pressable style={styles.requestButton} onPress={onSendRequest}>
-          <Text style={styles.requestText}>친구 신청</Text>
-        </Pressable>
-      )}
+      <View style={styles.actions}>
+        {status === "matched" ? (
+          <View style={[styles.requestButton, styles.matchedButton]}>
+            <Text style={styles.matchedText}>매칭됨</Text>
+          </View>
+        ) : status === "pending" ? (
+          <View style={[styles.requestButton, styles.pendingButton]}>
+            <Text style={styles.pendingText}>신청됨</Text>
+          </View>
+        ) : (
+          <Pressable style={styles.requestButton} onPress={onSendRequest}>
+            <Text style={styles.requestText}>친구 신청</Text>
+          </Pressable>
+        )}
+        <ModerationButton user={user} />
+      </View>
     </View>
   );
 }
@@ -40,8 +45,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 12,
   },
-  avatar: {
-    fontSize: 40,
+  actions: {
+    alignItems: "center",
+    gap: 2,
   },
   info: {
     flex: 1,

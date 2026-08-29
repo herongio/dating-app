@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import { useMatches } from "../context/MatchesContext";
 import { useNearbyUsers } from "../hooks/useNearbyUsers";
-import { useMatches } from "../hooks/useMatches";
 import { useReceivedFriendRequests } from "../hooks/useReceivedFriendRequests";
 import { sendFriendRequest, getSentRequestStatusMap, respondToRequest } from "../firebase/friendRequests";
+import Avatar from "../components/Avatar";
 import NearbyUserCard from "../components/NearbyUserCard";
 import { colors } from "../theme";
 
@@ -12,9 +13,9 @@ const RADIUS_KM = 5;
 
 export default function NearbyScreen() {
   const { currentUser } = useAuth();
-  const { users: nearby, loading, refresh } = useNearbyUsers(currentUser, RADIUS_KM);
-  const matches = useMatches(currentUser);
-  const receivedRequests = useReceivedFriendRequests(currentUser);
+  const { users: nearby, loading, refresh } = useNearbyUsers(RADIUS_KM);
+  const matches = useMatches();
+  const receivedRequests = useReceivedFriendRequests();
   const [sentStatus, setSentStatus] = useState({});
 
   const refreshSentStatus = useCallback(async () => {
@@ -38,12 +39,11 @@ export default function NearbyScreen() {
     }
   }
 
+  // Accepting only flips the request status; the Cloud Function creates the
+  // match, and MatchesProvider announces it when it lands.
   async function handleRespond(request, accept) {
     try {
       await respondToRequest(request, accept);
-      if (accept) {
-        Alert.alert("매칭 성공! 💕", `${request.profile.name}님과 매칭됐어요. 채팅 탭에서 대화를 시작해보세요.`);
-      }
     } catch {
       Alert.alert("오류", "처리하지 못했어요. 다시 시도해주세요.");
     }
@@ -65,7 +65,7 @@ export default function NearbyScreen() {
           <Text style={styles.requestsTitle}>받은 친구 신청</Text>
           {receivedRequests.map((request) => (
             <View key={request.id} style={styles.requestRow}>
-              <Text style={styles.requestAvatar}>{request.profile.avatar}</Text>
+              <Avatar user={request.profile} size={36} />
               <Text style={styles.requestName}>{request.profile.name}</Text>
               <View style={styles.requestButtons}>
                 <Pressable
@@ -160,9 +160,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 6,
     gap: 10,
-  },
-  requestAvatar: {
-    fontSize: 28,
   },
   requestName: {
     flex: 1,

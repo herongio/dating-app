@@ -6,6 +6,7 @@ import NearbyScreen from "../screens/NearbyScreen";
 import ChatListScreen from "../screens/ChatListScreen";
 import ChatRoomScreen from "../screens/ChatRoomScreen";
 import ProfileScreen from "../screens/ProfileScreen";
+import ModerationButton from "../components/ModerationButton";
 import { colors } from "../theme";
 
 const Tab = createBottomTabNavigator();
@@ -29,7 +30,10 @@ function ChatStack() {
       <ChatStackNav.Screen
         name="ChatRoom"
         component={ChatRoomScreen}
-        options={({ route }) => ({ title: route.params.profile.name })}
+        options={({ route }) => ({
+          title: route.params.profile.name,
+          headerRight: () => <ModerationButton user={route.params.profile} />,
+        })}
       />
     </ChatStackNav.Navigator>
   );

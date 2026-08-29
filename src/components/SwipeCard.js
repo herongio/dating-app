@@ -1,5 +1,7 @@
 import { useRef } from "react";
 import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
+import Avatar from "./Avatar";
+import ModerationButton from "./ModerationButton";
 import { colors } from "../theme";
 
 const SWIPE_THRESHOLD = 120;
@@ -82,7 +84,8 @@ export default function SwipeCard({ profile, onSwiped, isTop }) {
 function CardContent({ profile }) {
   return (
     <>
-      <Text style={styles.avatar}>{profile.avatar}</Text>
+      <ModerationButton user={profile} style={styles.moderation} />
+      <Avatar user={profile} size={96} style={styles.avatar} />
       <Text style={styles.name}>
         {profile.name}, {profile.age}
       </Text>
@@ -117,8 +120,13 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.96 }],
   },
   avatar: {
-    fontSize: 64,
     marginBottom: 12,
+  },
+  moderation: {
+    position: "absolute",
+    top: 10,
+    right: 14,
+    zIndex: 20,
   },
   name: {
     fontSize: 22,
@@ -152,7 +160,7 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: "absolute",
-    top: 24,
+    top: 52,
     borderWidth: 3,
     borderRadius: 8,
     paddingVertical: 4,

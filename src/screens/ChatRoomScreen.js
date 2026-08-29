@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import { useBlocks } from "../context/BlockContext";
 import { useChatMessages } from "../hooks/useChatMessages";
 import { sendMessage } from "../firebase/chats";
 import { colors } from "../theme";
@@ -17,8 +18,13 @@ import { colors } from "../theme";
 export default function ChatRoomScreen({ route }) {
   const { matchId, profile } = route.params;
   const { currentUser } = useAuth();
+  const { blockedIds } = useBlocks();
   const messages = useChatMessages(matchId);
   const [text, setText] = useState("");
+
+  // Mirrors the Firestore rule that rejects messages between a blocked pair,
+  // so the room explains itself instead of failing on send.
+  const isBlocked = blockedIds.has(profile.id);
 
   function handleSend() {
     if (!text.trim()) return;
@@ -53,19 +59,27 @@ export default function ChatRoomScreen({ route }) {
         }
       />
 
-      <View style={styles.inputRow}>
-        <TextInput
-          style={styles.input}
-          value={text}
-          onChangeText={setText}
-          placeholder="메시지 보내기"
-          onSubmitEditing={handleSend}
-          returnKeyType="send"
-        />
-        <Pressable style={styles.sendButton} onPress={handleSend}>
-          <Text style={styles.sendText}>전송</Text>
-        </Pressable>
-      </View>
+      {isBlocked ? (
+        <View style={styles.blockedNotice}>
+          <Text style={styles.blockedText}>
+            차단한 상대예요. 메시지를 주고받을 수 없어요.
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.inputRow}>
+          <TextInput
+            style={styles.input}
+            value={text}
+            onChangeText={setText}
+            placeholder="메시지 보내기"
+            onSubmitEditing={handleSend}
+            returnKeyType="send"
+          />
+          <Pressable style={styles.sendButton} onPress={handleSend}>
+            <Text style={styles.sendText}>전송</Text>
+          </Pressable>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -136,5 +150,15 @@ const styles = StyleSheet.create({
   sendText: {
     color: "#fff",
     fontWeight: "600",
+  },
+  blockedNotice: {
+    padding: 18,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  blockedText: {
+    textAlign: "center",
+    color: colors.textMuted,
+    fontSize: 14,
   },
 });

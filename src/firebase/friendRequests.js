@@ -1,6 +1,5 @@
 import { collection, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "./config";
-import { createMatchIfNeeded } from "./matches";
 
 const requestsCol = collection(db, "friendRequests");
 
@@ -34,12 +33,11 @@ export function subscribeToReceivedRequests(uid, callback) {
   });
 }
 
+// Accepting only flips the status — the onFriendRequestResponded Cloud
+// Function is what creates the match.
 export async function respondToRequest(request, accept) {
   await updateDoc(doc(requestsCol, request.id), {
     status: accept ? "accepted" : "declined",
     respondedAt: serverTimestamp(),
   });
-  if (accept) {
-    await createMatchIfNeeded(request.fromUserId, request.toUserId, "nearby");
-  }
 }

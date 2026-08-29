@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
-import { listAllUsers } from "../firebase/users";
+import { listCandidateUsers } from "../firebase/users";
 import { getSwipedTargetIds } from "../firebase/swipes";
+import { useAuth } from "../context/AuthContext";
+import { useBlocks } from "../context/BlockContext";
 
-export function useDiscoverPool(currentUser) {
+export function useDiscoverPool() {
+  const { currentUser } = useAuth();
+  const { blockedIds } = useBlocks();
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     if (!currentUser) return;
     setLoading(true);
-    const [allUsers, swipedIds] = await Promise.all([
-      listAllUsers(),
+    const [candidates, swipedIds] = await Promise.all([
+      listCandidateUsers(),
       getSwipedTargetIds(currentUser.id),
     ]);
-    const pool = allUsers.filter((u) => {
+    const pool = candidates.filter((u) => {
       if (u.id === currentUser.id) return false;
       if (swipedIds.has(u.id)) return false;
       if (currentUser.preferredGender && currentUser.preferredGender !== "any") {
@@ -35,5 +39,12 @@ export function useDiscoverPool(currentUser) {
     setProfiles((prev) => prev.filter((p) => p.id !== targetId));
   }
 
-  return { profiles, loading, refresh, removeProfile };
+  // Blocking filters at render time rather than in the fetch, so the card
+  // disappears the moment you block instead of on the next refresh.
+  return {
+    profiles: profiles.filter((p) => !blockedIds.has(p.id)),
+    loading,
+    refresh,
+    removeProfile,
+  };
 }
