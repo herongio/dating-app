@@ -150,17 +150,54 @@ describe("messages", () => {
   });
 });
 
-describe("friend requests", () => {
+describe("trips", () => {
+  beforeEach(() =>
+    seed((db) =>
+      setDoc(doc(db, "trips", "aliceTrip"), {
+        ownerId: ALICE,
+        destinationId: "tokyo",
+        startDate: "2026-09-01",
+        endDate: "2026-09-07",
+        intent: "companion",
+      })
+    )
+  );
+
+  test("any signed-in user can browse trips — that is how travellers find each other", async () => {
+    await assertSucceeds(
+      getDocs(query(collection(as(BOB), "trips"), where("destinationId", "==", "tokyo")))
+    );
+  });
+
+  test("a trip must be created under its own owner", async () => {
+    const fields = { destinationId: "osaka", startDate: "2026-09-01", endDate: "2026-09-05", intent: "both" };
+    await assertSucceeds(setDoc(doc(as(BOB), "trips", "bobTrip"), { ...fields, ownerId: BOB }));
+    await assertFails(setDoc(doc(as(BOB), "trips", "forged"), { ...fields, ownerId: ALICE }));
+  });
+
+  test("only the owner can edit or delete a trip", async () => {
+    await assertFails(updateDoc(doc(as(BOB), "trips", "aliceTrip"), { endDate: "2026-09-20" }));
+    await assertFails(deleteDoc(doc(as(BOB), "trips", "aliceTrip")));
+    await assertSucceeds(updateDoc(doc(as(ALICE), "trips", "aliceTrip"), { endDate: "2026-09-20" }));
+    await assertSucceeds(deleteDoc(doc(as(ALICE), "trips", "aliceTrip")));
+  });
+
+  test("a trip cannot be handed to someone else", async () => {
+    await assertFails(updateDoc(doc(as(ALICE), "trips", "aliceTrip"), { ownerId: BOB }));
+  });
+});
+
+describe("trip requests", () => {
   test("a request must be sent under the sender's own id", async () => {
     await assertSucceeds(
-      setDoc(doc(as(ALICE), "friendRequests", `${ALICE}_${BOB}`), {
+      setDoc(doc(as(ALICE), "tripRequests", `${ALICE}_${BOB}`), {
         fromUserId: ALICE,
         toUserId: BOB,
         status: "pending",
       })
     );
     await assertFails(
-      setDoc(doc(as(MALLORY), "friendRequests", `${ALICE}_${BOB}`), {
+      setDoc(doc(as(MALLORY), "tripRequests", `${ALICE}_${BOB}`), {
         fromUserId: ALICE,
         toUserId: BOB,
         status: "pending",
@@ -170,23 +207,23 @@ describe("friend requests", () => {
 
   test("only the recipient can accept, and only the status fields change", async () => {
     await seed((db) =>
-      setDoc(doc(db, "friendRequests", `${ALICE}_${BOB}`), {
+      setDoc(doc(db, "tripRequests", `${ALICE}_${BOB}`), {
         fromUserId: ALICE,
         toUserId: BOB,
         status: "pending",
       })
     );
-    const ref = (uid) => doc(as(uid), "friendRequests", `${ALICE}_${BOB}`);
+    const ref = (uid) => doc(as(uid), "tripRequests", `${ALICE}_${BOB}`);
 
     await assertFails(updateDoc(ref(ALICE), { status: "accepted" }));
     await assertFails(updateDoc(ref(BOB), { status: "accepted", toUserId: MALLORY }));
     await assertSucceeds(updateDoc(ref(BOB), { status: "accepted", respondedAt: new Date() }));
   });
 
-  test("a blocked pair cannot send friend requests", async () => {
+  test("a blocked pair cannot send trip requests", async () => {
     await blockPair(ALICE, BOB);
     await assertFails(
-      setDoc(doc(as(ALICE), "friendRequests", `${ALICE}_${BOB}`), {
+      setDoc(doc(as(ALICE), "tripRequests", `${ALICE}_${BOB}`), {
         fromUserId: ALICE,
         toUserId: BOB,
         status: "pending",

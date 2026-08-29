@@ -11,7 +11,7 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    // matchId / swipeId / friendRequest / block doc ids are "{uidA}_{uidB}" —
+    // matchId / swipeId / tripRequest / block doc ids are "{uidA}_{uidB}" —
     // Firebase Auth uids never contain "_", so splitting is safe.
     function idParts(id) {
       return id.split('_');
@@ -62,7 +62,22 @@ service cloud.firestore {
       }
     }
 
-    match /friendRequests/{requestId} {
+    // Trips are public to signed-in users: finding fellow travellers is the
+    // whole point of the app, and a trip carries no more than a city and a
+    // date range.
+    match /trips/{tripId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // "같이 가요" — a request to travel together, tied to the two trips that
+    // overlap. Accepting it is what the onTripRequestResponded Cloud Function
+    // turns into a match.
+    match /tripRequests/{requestId} {
       allow read: if isSignedIn()
         && (resource.data.fromUserId == request.auth.uid || resource.data.toUserId == request.auth.uid);
       allow create: if isSignedIn()

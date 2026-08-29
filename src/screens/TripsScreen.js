@@ -1,43 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { useAuth } from "../context/AuthContext";
-import { useMatches } from "../context/MatchesContext";
-import { useNearbyUsers } from "../hooks/useNearbyUsers";
-import { useReceivedFriendRequests } from "../hooks/useReceivedFriendRequests";
-import { sendFriendRequest, getSentRequestStatusMap, respondToRequest } from "../firebase/friendRequests";
+import { useMyTrips } from "../hooks/useMyTrips";
+import { useReceivedTripRequests } from "../hooks/useReceivedTripRequests";
+import { respondToRequest } from "../firebase/tripRequests";
 import Avatar from "../components/Avatar";
-import NearbyUserCard from "../components/NearbyUserCard";
+import TripCard from "../components/TripCard";
 import { colors } from "../theme";
 
-const RADIUS_KM = 5;
-
-export default function NearbyScreen() {
-  const { currentUser } = useAuth();
-  const { users: nearby, loading, refresh } = useNearbyUsers(RADIUS_KM);
-  const matches = useMatches();
-  const receivedRequests = useReceivedFriendRequests();
-  const [sentStatus, setSentStatus] = useState({});
-
-  const refreshSentStatus = useCallback(async () => {
-    if (!currentUser) return;
-    setSentStatus(await getSentRequestStatusMap(currentUser.id));
-  }, [currentUser]);
-
-  useEffect(() => {
-    refreshSentStatus();
-  }, [refreshSentStatus]);
-
-  const matchedIds = new Set(matches.map((m) => m.profile.id));
-
-  async function handleSendRequest(user) {
-    try {
-      await sendFriendRequest(currentUser.id, user.id);
-      setSentStatus((prev) => ({ ...prev, [user.id]: "pending" }));
-      Alert.alert("친구 신청 완료", `${user.name}님에게 친구 신청을 보냈어요.`);
-    } catch {
-      Alert.alert("오류", "친구 신청을 보내지 못했어요. 다시 시도해주세요.");
-    }
-  }
+export default function TripsScreen({ navigation }) {
+  const { trips, loading } = useMyTrips();
+  const requests = useReceivedTripRequests();
 
   // Accepting only flips the request status; the Cloud Function creates the
   // match, and MatchesProvider announces it when it lands.
@@ -49,24 +20,29 @@ export default function NearbyScreen() {
     }
   }
 
-  function statusFor(userId) {
-    if (matchedIds.has(userId)) return "matched";
-    if (sentStatus[userId] === "pending") return "pending";
-    return "none";
-  }
-
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>내 주변 이상형</Text>
-      <Text style={styles.subtitle}>{RADIUS_KM}km 이내에서 찾은 프로필이에요</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>내 여행</Text>
+        <Pressable style={styles.addButton} onPress={() => navigation.navigate("TripForm")}>
+          <Text style={styles.addText}>+ 여행 추가</Text>
+        </Pressable>
+      </View>
 
-      {receivedRequests.length > 0 && (
+      {requests.length > 0 && (
         <View style={styles.requestsBox}>
-          <Text style={styles.requestsTitle}>받은 친구 신청</Text>
-          {receivedRequests.map((request) => (
+          <Text style={styles.requestsTitle}>받은 동행 신청</Text>
+          {requests.map((request) => (
             <View key={request.id} style={styles.requestRow}>
               <Avatar user={request.profile} size={36} />
-              <Text style={styles.requestName}>{request.profile.name}</Text>
+              <View style={styles.requestInfo}>
+                <Text style={styles.requestName}>{request.profile.name}</Text>
+                {request.message ? (
+                  <Text style={styles.requestMessage} numberOfLines={1}>
+                    {request.message}
+                  </Text>
+                ) : null}
+              </View>
               <View style={styles.requestButtons}>
                 <Pressable
                   style={[styles.requestActionButton, styles.declineButton]}
@@ -90,23 +66,20 @@ export default function NearbyScreen() {
         <ActivityIndicator color={colors.primary} size="large" style={styles.loading} />
       ) : (
         <FlatList
-          data={nearby}
+          data={trips}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          onRefresh={() => {
-            refresh();
-            refreshSentStatus();
-          }}
-          refreshing={false}
           renderItem={({ item }) => (
-            <NearbyUserCard
-              user={item}
-              status={statusFor(item.id)}
-              onSendRequest={() => handleSendRequest(item)}
+            <TripCard
+              trip={item}
+              onPress={() => navigation.navigate("TripTravelers", { trip: item })}
+              onEdit={() => navigation.navigate("TripForm", { trip: item })}
             />
           )}
           ListEmptyComponent={
-            <Text style={styles.empty}>근처에서 이상형을 찾지 못했어요.</Text>
+            <Text style={styles.empty}>
+              아직 등록한 여행이 없어요.{"\n"}여행을 추가하면 같은 날 같은 곳에 가는{"\n"}사람들을 찾아드려요 ✈️
+            </Text>
           }
         />
       )}
@@ -121,16 +94,27 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingHorizontal: 20,
   },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
   title: {
     fontSize: 24,
     fontWeight: "bold",
     color: colors.text,
   },
-  subtitle: {
-    fontSize: 14,
-    color: colors.textMuted,
-    marginTop: 4,
-    marginBottom: 16,
+  addButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 18,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  addText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 13,
   },
   loading: {
     marginTop: 40,
@@ -141,7 +125,8 @@ const styles = StyleSheet.create({
   empty: {
     textAlign: "center",
     color: colors.textMuted,
-    marginTop: 40,
+    marginTop: 60,
+    lineHeight: 24,
   },
   requestsBox: {
     backgroundColor: colors.card,
@@ -161,11 +146,18 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     gap: 10,
   },
-  requestName: {
+  requestInfo: {
     flex: 1,
+  },
+  requestName: {
     fontSize: 15,
     fontWeight: "600",
     color: colors.text,
+  },
+  requestMessage: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginTop: 1,
   },
   requestButtons: {
     flexDirection: "row",

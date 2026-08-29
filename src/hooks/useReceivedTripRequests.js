@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { subscribeToReceivedRequests } from "../firebase/friendRequests";
+import { subscribeToReceivedRequests } from "../firebase/tripRequests";
 import { getUserProfile } from "../firebase/users";
 import { useAuth } from "../context/AuthContext";
 import { useBlocks } from "../context/BlockContext";
 
-export function useReceivedFriendRequests() {
+export function useReceivedTripRequests() {
   const { currentUser } = useAuth();
   const { blockedIds } = useBlocks();
   const [requests, setRequests] = useState([]);

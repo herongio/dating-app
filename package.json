@@ -8,12 +8,14 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "npm run test:rules && npm run test:functions",
+    "test": "npm run test:unit && npm run test:rules && npm run test:functions",
     "test:rules": "firebase emulators:exec --only firestore --project demo-dating-app \"node --test tests/firestore.test.mjs\"",
-    "test:functions": "firebase emulators:exec --only functions,firestore --project demo-dating-app \"node --test --test-concurrency=1 tests/functions.test.mjs\""
+    "test:functions": "firebase emulators:exec --only functions,firestore --project demo-dating-app \"node --test --test-concurrency=1 tests/functions.test.mjs\"",
+    "test:unit": "node --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/trips.test.mjs"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^1.23.1",
+    "@react-native-community/datetimepicker": "~8.0.1",
     "@react-navigation/bottom-tabs": "^6.6.1",
     "@react-navigation/native": "^6.1.18",
     "@react-navigation/native-stack": "^6.11.0",
@@ -22,11 +24,9 @@
     "expo-device": "~6.0.2",
     "expo-image-manipulator": "~12.0.5",
     "expo-image-picker": "~15.0.7",
-    "expo-location": "~17.0.1",
     "expo-notifications": "~0.28.19",
     "expo-status-bar": "~1.12.1",
     "firebase": "^12.17.1",
-    "geofire-common": "^6.0.0",
     "react": "18.2.0",
     "react-native": "0.74.5",
     "react-native-gesture-handler": "~2.16.1",

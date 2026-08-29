@@ -58,16 +58,16 @@ exports.onSwipeCreated = onDocumentCreated("swipes/{swipeId}", async (event) => 
   }
 });
 
-exports.onFriendRequestResponded = onDocumentUpdated(
-  "friendRequests/{requestId}",
+exports.onTripRequestResponded = onDocumentUpdated(
+  "tripRequests/{requestId}",
   async (event) => {
     const before = event.data?.before.data();
     const after = event.data?.after.data();
     if (!before || !after) return;
     if (before.status === "accepted" || after.status !== "accepted") return;
 
-    if (await createMatch(after.fromUserId, after.toUserId, "nearby")) {
-      logger.info("Friend request accepted", {
+    if (await createMatch(after.fromUserId, after.toUserId, "trip")) {
+      logger.info("Trip request accepted", {
         fromUserId: after.fromUserId,
         toUserId: after.toUserId,
       });
@@ -104,8 +104,8 @@ exports.onMatchCreated = onDocumentCreated("matches/{matchId}", async (event) =>
     participants.map(async (uid) => {
       const other = participants.find((id) => id !== uid);
       await sendPushTo(db, uid, {
-        title: "새로운 매칭 💕",
-        body: `${await displayName(other)}님과 매칭됐어요! 먼저 인사해보세요.`,
+        title: "새로운 여행 메이트 ✈️",
+        body: `${await displayName(other)}님과 연결됐어요! 먼저 인사해보세요.`,
         data: { type: "match", matchId: event.params.matchId },
       });
     })

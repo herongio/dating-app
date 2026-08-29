@@ -15,6 +15,7 @@ import { useBlocks } from "../context/BlockContext";
 import { useBlockedProfiles } from "../hooks/useBlockedProfiles";
 import { deleteProfilePhoto, uploadProfilePhoto } from "../firebase/storage";
 import Avatar from "../components/Avatar";
+import { BUDGET_LEVELS, PACE_LEVELS, TRAVEL_STYLES } from "../data/travelStyles";
 import { colors } from "../theme";
 
 const GENDER_OPTIONS = [
@@ -37,6 +38,9 @@ export default function ProfileScreen() {
   const [bio, setBio] = useState(currentUser.bio);
   const [gender, setGender] = useState(currentUser.gender);
   const [preferredGender, setPreferredGender] = useState(currentUser.preferredGender);
+  const [travelStyles, setTravelStyles] = useState(currentUser.travelStyles ?? []);
+  const [budget, setBudget] = useState(currentUser.budget ?? "moderate");
+  const [pace, setPace] = useState(currentUser.pace ?? "balanced");
   const [uploading, setUploading] = useState(false);
 
   function handleSave() {
@@ -44,8 +48,23 @@ export default function ProfileScreen() {
       Alert.alert("알림", "이름과 나이를 입력해주세요.");
       return;
     }
-    updateProfile({ name: name.trim(), age: Number(age), bio: bio.trim(), gender, preferredGender });
+    updateProfile({
+      name: name.trim(),
+      age: Number(age),
+      bio: bio.trim(),
+      gender,
+      preferredGender,
+      travelStyles,
+      budget,
+      pace,
+    });
     Alert.alert("저장 완료", "프로필이 업데이트됐어요.");
+  }
+
+  function toggleStyle(style) {
+    setTravelStyles((prev) =>
+      prev.includes(style) ? prev.filter((s) => s !== style) : [...prev, style]
+    );
   }
 
   function handlePhotoPress() {
@@ -146,12 +165,39 @@ export default function ProfileScreen() {
         <ChoiceRow options={GENDER_OPTIONS} value={gender} onChange={setGender} />
       </Field>
 
-      <Field label="이상형">
+      <Field label="이상형 (만남을 여는 여행에만 적용돼요)">
         <ChoiceRow
           options={PREFERENCE_OPTIONS}
           value={preferredGender}
           onChange={setPreferredGender}
         />
+      </Field>
+
+      <Field label="여행 스타일">
+        <View style={styles.styleRow}>
+          {TRAVEL_STYLES.map((style) => {
+            const selected = travelStyles.includes(style);
+            return (
+              <Pressable
+                key={style}
+                style={[styles.choice, selected && styles.choiceSelected]}
+                onPress={() => toggleStyle(style)}
+              >
+                <Text style={[styles.choiceText, selected && styles.choiceTextSelected]}>
+                  {style}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </Field>
+
+      <Field label="예산">
+        <ChoiceRow options={BUDGET_LEVELS} value={budget} onChange={setBudget} />
+      </Field>
+
+      <Field label="여행 페이스">
+        <ChoiceRow options={PACE_LEVELS} value={pace} onChange={setPace} />
       </Field>
 
       <Pressable style={styles.saveButton} onPress={handleSave}>
@@ -262,6 +308,11 @@ const styles = StyleSheet.create({
   choiceRow: {
     flexDirection: "row",
     gap: 10,
+  },
+  styleRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
   choice: {
     paddingVertical: 8,

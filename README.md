@@ -1,18 +1,45 @@
 # dating-app
 
-A dating app built with React Native (Expo), backed by Firebase
+여행 일정이 겹치는 사람을 찾아주는 앱. React Native (Expo) + Firebase
 (Authentication + Firestore + Storage + Cloud Functions).
+
+같은 날 같은 도시에 가는 사람끼리만 만나는 게 핵심입니다. 여행을 등록하면
+목적지·날짜가 겹치고 목적이 맞는 사람만 추천됩니다.
 
 ## Features
 
 - 회원가입 / 로그인 & 프로필 편집 (Firebase Authentication)
 - 프로필 사진 업로드 (Firebase Storage) — 없으면 이모지 아바타로 대체
-- 스와이프 매칭 (제스처 기반 카드 + Like/Pass 버튼), 상호 좋아요 시 실시간 매칭
+- **여행 등록** — 목적지, 날짜, 이번 여행의 목적(동행 / 만남 / 둘 다), 한마디
+- **일정 겹침 매칭** — 같은 도시 + 날짜 겹침 + 목적 호환인 사람만 노출
+- 스와이프 (제스처 카드 + Like/Pass), 상호 좋아요 시 매칭
+- 여행별 동행 찾기 목록에서 바로 "같이 가요" 신청 → 수락하면 매칭
 - 매칭된 상대와 실시간 채팅 (Firestore `onSnapshot`)
-- 위치 기반 추천 — 내 위치 기준 반경 내 이상형 목록 (geohash 쿼리)
-- 내 주변에서 이상형을 찾으면 스와이프 없이 바로 친구 신청 → 상대가 수락하면 매칭
 - 매칭 · 새 메시지 푸시 알림 (Expo Push)
 - 신고 / 차단 — 차단하면 서로 프로필이 숨겨지고 메시지도 차단됨
+
+## 매칭 규칙
+
+두 여행이 아래 세 조건을 **모두** 만족할 때만 서로에게 보입니다.
+
+| 조건 | 판정 |
+| --- | --- |
+| 목적지 | `destinationId`가 정확히 같을 때 |
+| 날짜 | 하루라도 겹칠 때 (`시작 ≤ 상대 종료 && 상대 시작 ≤ 종료`) |
+| 목적 | 같거나, 한쪽이 "둘 다 좋아요"일 때 |
+
+목적은 `companion`(동행 구해요) / `dating`(만남 열려있어요) / `both`(둘 다)
+세 가지입니다. **성별·이상형 선호는 양쪽 다 `companion`이 아닐 때만
+적용됩니다** — 순수하게 동행을 찾는 사이를 이상형 필터로 갈라놓지 않기
+위해서입니다. 적용될 때는 양방향으로 봅니다.
+
+한 사람은 목록에 한 번만 나오고, 내 여행 중 **가장 많이 겹치는** 여행 기준으로
+보여집니다 (`src/firebase/travelMatching.js`).
+
+여행지는 [`src/data/destinations.js`](./src/data/destinations.js)의 고정
+목록에서 고릅니다. 장소 API 키가 필요 없고, 무엇보다 모든 여행이 안정적인
+`destinationId`를 갖게 되므로 "도쿄 가는 사람"이 지리 범위 스캔이 아니라
+**동등 비교 한 번**으로 끝납니다.
 
 ## Architecture
 
@@ -24,7 +51,7 @@ A dating app built with React Native (Expo), backed by Firebase
 | 트리거 | 하는 일 |
 | --- | --- |
 | `onSwipeCreated` | 상호 좋아요면 `matches/{sortedPair}` 생성 |
-| `onFriendRequestResponded` | 친구 신청 수락 시 매칭 생성 |
+| `onTripRequestResponded` | "같이 가요" 신청 수락 시 매칭 생성 |
 | `onBlockWritten` | `blocks` → 대칭 `blockPairs` 미러 유지 |
 | `onMatchCreated` | 양쪽에 매칭 푸시 발송 |
 | `onMessageCreated` | 수신자에게 메시지 푸시 발송 |
@@ -63,7 +90,7 @@ cp .env.example .env
 
 `.env` 파일을 열어 1번에서 복사한 값을 채워넣습니다. (`.env`는 git에 커밋되지 않습니다.)
 
-### 3. 보안 규칙 & Cloud Functions 배포
+### 3. 규칙 · 색인 · Cloud Functions 배포
 
 ```bash
 npm install -g firebase-tools     # 이미 있으면 생략
@@ -71,13 +98,18 @@ firebase login
 firebase use --add                # 위에서 만든 프로젝트 선택
 
 cd functions && npm install && cd ..
-firebase deploy --only firestore:rules,storage:rules,functions
+firebase deploy --only firestore,storage:rules,functions
 ```
 
 > **규칙 배포는 선택이 아니라 필수입니다.** 이 앱의 보안 모델(스와이프 비공개,
 > 매칭 위조 방지, 차단)은 전부 [`firestore.rules`](./firestore.rules)와
 > [`storage.rules`](./storage.rules)에 들어 있습니다. 테스트 모드 기본 규칙으로
 > 두면 아무나 남의 스와이프를 읽고 매칭을 조작할 수 있습니다.
+
+`--only firestore`에는 규칙과 함께
+[`firestore.indexes.json`](./firestore.indexes.json)의 복합 색인
+(`trips`: `destinationId` + `endDate`)이 포함됩니다. 이 색인이 없으면 동행 찾기
+쿼리가 실패합니다.
 
 Functions는 `asia-northeast3`(서울) 리전에 배포됩니다. 다른 리전을 쓰려면
 [`functions/index.js`](./functions/index.js)의 `setGlobalOptions`를 바꾸세요.
@@ -93,9 +125,12 @@ A QR code will appear in the terminal. Scan it with the Expo Go app (Android: in
 
 ### 매칭/채팅 테스트하기
 
-Firestore는 처음엔 비어있어서, 스와이프·내 주변 화면에 아무도 안 보이는 게 정상입니다. 계정을 2개 이상 만들어서 (다른 이메일로 회원가입 후 로그아웃 → 재가입, 또는 다른 기기/시뮬레이터 사용) 서로 스와이프하거나 친구 신청을 보내 매칭·채팅을 테스트해보세요.
+계정을 2개 이상 만들고(다른 이메일로 회원가입 후 로그아웃 → 재가입, 또는 다른
+기기/시뮬레이터), **양쪽 모두 같은 여행지에 날짜가 겹치는 여행을 등록**해야
+서로가 보입니다. 목적도 호환돼야 하니 둘 다 "둘 다 좋아요"로 두면 가장 쉽게
+확인할 수 있습니다.
 
-매칭 알림은 이제 Cloud Function이 매칭 문서를 만든 뒤 구독을 통해 도착하므로,
+매칭 알림은 Cloud Function이 매칭 문서를 만든 뒤 구독을 통해 도착하므로,
 스와이프 직후가 아니라 1초 안팎 뒤에 뜹니다.
 
 ### 푸시 알림에 대해
@@ -106,14 +141,16 @@ Firestore는 처음엔 비어있어서, 스와이프·내 주변 화면에 아�
 
 ## Tests
 
-Firestore 보안 규칙과 Cloud Functions 트리거는 에뮬레이터 위에서 테스트합니다
-(Java 필요, `firebase-tools`는 devDependency로 들어있습니다).
-
 ```bash
-npm test              # 규칙 + 트리거 전체
-npm run test:rules    # firestore.rules 만
+npm test              # 아래 셋 전부
+npm run test:unit     # 매칭 규칙 (에뮬레이터 불필요)
+npm run test:rules    # firestore.rules
 npm run test:functions
 ```
+
+`test:unit`은 `src/utils/trips.js`를 그대로 불러 날짜 겹침·목적 호환 판정을
+검증합니다. 나머지 둘은 Firebase 에뮬레이터 위에서 돌아갑니다 (Java 필요,
+`firebase-tools`는 devDependency로 들어있습니다).
 
 ## Project Structure
 
@@ -123,6 +160,7 @@ dating-app/
 ├── app.json
 ├── firebase.json               # 배포/에뮬레이터 설정
 ├── firestore.rules             # Firestore 보안 규칙
+├── firestore.indexes.json      # trips 복합 색인
 ├── storage.rules               # Storage 보안 규칙
 ├── .env.example
 ├── functions/                  # Cloud Functions (매칭 · 차단 미러 · 푸시)
@@ -130,29 +168,36 @@ dating-app/
 │   ├── ids.js                  # uid 쌍 → 문서 id
 │   └── push.js                 # Expo push 발송
 ├── tests/
+│   ├── trips.test.mjs          # 매칭 규칙 단위 테스트
 │   ├── firestore.test.mjs      # 보안 규칙 테스트
 │   └── functions.test.mjs      # 트리거 테스트
 ├── src/
 │   ├── theme.js
+│   ├── data/
+│   │   ├── destinations.js     # 여행지 목록 (좌표 포함)
+│   │   └── travelStyles.js     # 여행 스타일 · 예산 · 페이스 선택지
 │   ├── utils/
-│   │   ├── location.js         # 위치 + geohash + 거리 계산
+│   │   ├── trips.js            # 날짜 겹침 · 목적 호환 · 표기
 │   │   ├── notifications.js    # Expo push 토큰 등록
 │   │   └── firebaseErrors.js
 │   ├── firebase/
 │   │   ├── config.js           # Firebase app/auth/firestore/storage 초기화
-│   │   ├── users.js            # 프로필 CRUD + geohash 반경 쿼리
+│   │   ├── users.js            # 프로필 CRUD
+│   │   ├── trips.js            # 여행 CRUD + 목적지별 조회
+│   │   ├── travelMatching.js   # 내 여행 ↔ 남의 여행 겹침 계산
 │   │   ├── storage.js          # 프로필 사진 업로드/삭제
 │   │   ├── swipes.js           # 스와이프 기록 (매칭 판정은 서버)
 │   │   ├── matches.js          # 매칭 구독
 │   │   ├── chats.js            # 메시지 전송/구독
-│   │   ├── friendRequests.js   # 친구 신청 보내기/수락/거절
+│   │   ├── tripRequests.js     # "같이 가요" 신청/수락/거절
 │   │   ├── moderation.js       # 신고 · 차단
 │   │   └── pushTokens.js       # 푸시 토큰 저장 (비공개 컬렉션)
 │   ├── hooks/
+│   │   ├── useMyTrips.js
+│   │   ├── useTripCandidates.js
 │   │   ├── useDiscoverPool.js
-│   │   ├── useNearbyUsers.js
 │   │   ├── useChatMessages.js
-│   │   ├── useReceivedFriendRequests.js
+│   │   ├── useReceivedTripRequests.js
 │   │   └── useBlockedProfiles.js
 │   ├── context/
 │   │   ├── AuthContext.js      # 로그인 상태 + 프로필
@@ -164,28 +209,36 @@ dating-app/
 │   │   └── MainTabs.js
 │   ├── components/
 │   │   ├── Avatar.js           # 사진 또는 이모지 아바타
+│   │   ├── DateField.js        # iOS/Android 날짜 선택
+│   │   ├── DestinationPicker.js
+│   │   ├── TripCard.js         # 내 여행 카드
+│   │   ├── TravelerCard.js     # 동행 후보 카드
 │   │   ├── SwipeCard.js
-│   │   ├── NearbyUserCard.js
 │   │   └── ModerationButton.js # 신고/차단 메뉴
 │   └── screens/
 │       ├── LoginScreen.js
 │       ├── SignUpScreen.js
 │       ├── ProfileScreen.js
 │       ├── SwipeScreen.js
-│       ├── NearbyScreen.js
+│       ├── TripsScreen.js
+│       ├── TripFormScreen.js
+│       ├── TripTravelersScreen.js
 │       ├── ChatListScreen.js
 │       └── ChatRoomScreen.js
 ```
 
 ## Known limitations (다음 단계 후보)
 
-- **기존 사용자 마이그레이션**: geohash 도입 전에 가입한 프로필에는 `geohash`
-  필드가 없어서 내 주변 검색에 안 잡힙니다. 앱을 한 번 열면 로그인 시점에
-  현재 위치와 geohash가 다시 기록되면서 자동으로 복구됩니다.
-- 스와이프 덱은 `users`에서 100명을 가져와 클라이언트에서 거른 뒤 보여줍니다.
-  사용자가 많아지면 내 주변처럼 geohash 기반 페이지네이션으로 바꿔야 합니다.
+- 여행지가 [고정 목록](./src/data/destinations.js) 32곳으로 제한됩니다. 목록에
+  없는 곳으로 가는 사람은 여행을 등록할 수 없습니다. 장소 API 연동이나
+  "근처 도시까지 포함" 옵션이 다음 단계입니다.
+- 목적지가 정확히 같아야 매칭됩니다. 오사카와 교토처럼 붙어 있는 도시는 서로
+  안 잡힙니다.
+- 여행 스타일·예산·페이스는 카드에 표시만 되고 매칭 조건에는 안 들어갑니다.
+  정렬 가중치로 쓰는 게 다음 단계입니다.
 - 신고는 `reports` 컬렉션에 쌓이기만 하고, 검토는 Firebase 콘솔에서 수동으로
-  해야 합니다. 자동 조치(임계치 초과 시 계정 정지 등)는 아직 없습니다.
+  해야 합니다.
 - 차단해도 이미 만들어진 매칭 문서와 지난 메시지는 남아 있고, 양쪽 화면에서
   숨겨지기만 합니다.
 - 푸시 알림을 눌러도 해당 채팅방으로 바로 이동하지는 않습니다 (딥링크 미구현).
+- 지난 여행은 목록에 남지만 자동으로 정리되지는 않습니다.

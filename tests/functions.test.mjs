@@ -77,18 +77,18 @@ describe("onSwipeCreated", () => {
   });
 });
 
-describe("onFriendRequestResponded", () => {
+describe("onTripRequestResponded", () => {
   test("accepting creates the match", async () => {
-    const ref = db.doc("friendRequests/reqA_reqB");
+    const ref = db.doc("tripRequests/reqA_reqB");
     await ref.set({ fromUserId: "reqA", toUserId: "reqB", status: "pending" });
     await ref.update({ status: "accepted" });
 
     const match = await waitFor("matches/reqA_reqB");
-    assert.equal(match.data().source, "nearby");
+    assert.equal(match.data().source, "trip");
   });
 
   test("declining creates nothing", async () => {
-    const ref = db.doc("friendRequests/decA_decB");
+    const ref = db.doc("tripRequests/decA_decB");
     await ref.set({ fromUserId: "decA", toUserId: "decB", status: "pending" });
     await ref.update({ status: "declined" });
     await assertNever("matches/decA_decB");
