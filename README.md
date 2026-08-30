@@ -139,6 +139,28 @@ A QR code will appear in the terminal. Scan it with the Expo Go app (Android: in
 토큰이 없어 푸시만 조용히 비활성화되고, 나머지 기능은 그대로 동작합니다.
 실제로 받아보려면 `eas init` 후 development build로 실행하세요.
 
+## 에뮬레이터로 실행하기 (Firebase 프로젝트 없이)
+
+Firebase 계정 없이 앱을 띄워볼 수 있습니다. 터미널 세 개로:
+
+```bash
+npm run emulators                 # Auth · Firestore · Storage · Functions
+npm run seed                      # 데모 여행자 5명, 여행 6개, 대화 1건
+EXPO_PUBLIC_FIREBASE_EMULATOR=1 npx expo start
+```
+
+`.env`에는 아무 값이나 채워도 됩니다 — 에뮬레이터는 자격증명을 검사하지 않습니다.
+시드가 만들어주는 계정은 `demo@travel.app` / `demo1234` 입니다.
+
+`EXPO_PUBLIC_FIREBASE_EMULATOR=1` 일 때만
+[`src/firebase/config.js`](./src/firebase/config.js)가 에뮬레이터에 붙습니다.
+실기기에서 붙일 땐 `EXPO_PUBLIC_EMULATOR_HOST`에 개발 PC의 LAN IP를 넣으세요.
+
+웹으로도 뜹니다 (`npx expo start --web`). 날짜 선택기만 플랫폼별로 갈리는데,
+`@react-native-community/datetimepicker`에 웹 구현이 없어서
+[`DateField.web.js`](./src/components/DateField.web.js)가 브라우저 기본 날짜
+입력을 대신 씁니다.
+
 ## Tests
 
 ```bash
@@ -167,6 +189,8 @@ dating-app/
 │   ├── index.js
 │   ├── ids.js                  # uid 쌍 → 문서 id
 │   └── push.js                 # Expo push 발송
+├── scripts/
+│   └── seed-emulator.mjs       # 에뮬레이터 데모 데이터
 ├── tests/
 │   ├── trips.test.mjs          # 매칭 규칙 단위 테스트
 │   ├── firestore.test.mjs      # 보안 규칙 테스트
@@ -210,6 +234,7 @@ dating-app/
 │   ├── components/
 │   │   ├── Avatar.js           # 사진 또는 이모지 아바타
 │   │   ├── DateField.js        # iOS/Android 날짜 선택
+│   │   ├── DateField.web.js    # 웹용 날짜 입력
 │   │   ├── DestinationPicker.js
 │   │   ├── TripCard.js         # 내 여행 카드
 │   │   ├── TravelerCard.js     # 동행 후보 카드
@@ -242,3 +267,5 @@ dating-app/
   숨겨지기만 합니다.
 - 푸시 알림을 눌러도 해당 채팅방으로 바로 이동하지는 않습니다 (딥링크 미구현).
 - 지난 여행은 목록에 남지만 자동으로 정리되지는 않습니다.
+- 스와이프 덱 뒤에 깔린 카드는 앞 카드보다 짧으면 완전히 가려집니다. 제대로
+  된 카드 스택 효과를 내려면 카드 높이를 고정해야 합니다.

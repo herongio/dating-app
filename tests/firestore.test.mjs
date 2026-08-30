@@ -117,6 +117,22 @@ describe("matches are created only by Cloud Functions", () => {
     await assertFails(getDoc(doc(as(MALLORY), "matches", MATCH)));
   });
 
+  // The chat list lists the collection rather than fetching one doc. A rule
+  // keyed on the {matchId} wildcard passes the get above and still denies this,
+  // because the wildcard is null when the query has no single document.
+  test("a participant can list their matches, which is how the chat list loads", async () => {
+    await assertSucceeds(
+      getDocs(query(collection(as(ALICE), "matches"), where("participants", "array-contains", ALICE)))
+    );
+  });
+
+  test("listing someone else's matches is denied", async () => {
+    await assertFails(
+      getDocs(query(collection(as(MALLORY), "matches"), where("participants", "array-contains", ALICE)))
+    );
+    await assertFails(getDocs(collection(as(ALICE), "matches")));
+  });
+
   test("participants may only update the chat-list preview fields", async () => {
     await assertSucceeds(
       updateDoc(doc(as(ALICE), "matches", MATCH), { lastMessage: "안녕", lastMessageAt: new Date() })

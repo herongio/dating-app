@@ -107,6 +107,8 @@ const styles = StyleSheet.create({
     width: "100%",
     justifyContent: "center",
     alignItems: "center",
+    // The cards inside are absolutely positioned from the top of this box.
+    paddingTop: 8,
   },
   emptyBox: {
     alignItems: "center",

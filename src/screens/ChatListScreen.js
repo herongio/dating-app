@@ -32,7 +32,7 @@ export default function ChatListScreen({ navigation }) {
         )}
         ListEmptyComponent={
           <Text style={styles.empty}>
-            아직 매칭이 없어요.{"\n"}둘러보기나 내 주변 탭에서 매칭을 만들어보세요!
+            아직 매칭이 없어요.{"\n"}둘러보기나 내 여행 탭에서{"\n"}같이 갈 사람을 찾아보세요!
           </Text>
         }
       />

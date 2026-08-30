@@ -128,6 +128,10 @@ function CardContent({ candidate }) {
 const styles = StyleSheet.create({
   card: {
     position: "absolute",
+    // Both cards need the same anchor. Without an explicit top, the layout
+    // engine centres each absolute child by its own height, so the shorter
+    // card behind drifts up and peeks out above the one on top.
+    top: 0,
     width: "100%",
     borderRadius: 20,
     padding: 24,
@@ -140,8 +144,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   cardBehind: {
-    top: 8,
-    transform: [{ scale: 0.96 }],
+    transform: [{ scale: 0.96 }, { translateY: 8 }],
   },
   avatar: {
     marginBottom: 12,
