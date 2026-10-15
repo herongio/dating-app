@@ -1,10 +1,14 @@
 import { useRef } from "react";
 import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
+import Avatar from "./Avatar";
+import ModerationButton from "./ModerationButton";
+import { destinationById } from "../data/destinations";
+import { formatTripDates, intentLabel } from "../utils/trips";
 import { colors } from "../theme";
 
 const SWIPE_THRESHOLD = 120;
 
-export default function SwipeCard({ profile, onSwiped, isTop }) {
+export default function SwipeCard({ candidate, onSwiped, isTop }) {
   const pan = useRef(new Animated.ValueXY()).current;
   const rotate = pan.x.interpolate({
     inputRange: [-300, 0, 300],
@@ -53,7 +57,7 @@ export default function SwipeCard({ profile, onSwiped, isTop }) {
   if (!isTop) {
     return (
       <View style={[styles.card, styles.cardBehind]}>
-        <CardContent profile={profile} />
+        <CardContent candidate={candidate} />
       </View>
     );
   }
@@ -74,26 +78,49 @@ export default function SwipeCard({ profile, onSwiped, isTop }) {
       <Animated.View style={[styles.badge, styles.passBadge, { opacity: passOpacity }]}>
         <Text style={styles.badgeText}>PASS</Text>
       </Animated.View>
-      <CardContent profile={profile} />
+      <CardContent candidate={candidate} />
     </Animated.View>
   );
 }
 
-function CardContent({ profile }) {
+// The trip is the reason this person is in the deck at all, so it gets the
+// same weight as the profile itself.
+function CardContent({ candidate }) {
+  const { user, trip, overlapDays } = candidate;
+  const destination = destinationById(trip.destinationId);
+
   return (
     <>
-      <Text style={styles.avatar}>{profile.avatar}</Text>
+      <ModerationButton user={user} style={styles.moderation} />
+      <Avatar user={user} size={96} style={styles.avatar} />
       <Text style={styles.name}>
-        {profile.name}, {profile.age}
+        {user.name}, {user.age}
       </Text>
-      <Text style={styles.bio}>{profile.bio}</Text>
-      <View style={styles.interests}>
-        {profile.interests.map((interest) => (
-          <View key={interest} style={styles.interestChip}>
-            <Text style={styles.interestText}>{interest}</Text>
+
+      <View style={styles.tripBox}>
+        <Text style={styles.destination}>
+          {destination?.emoji} {destination?.name}
+        </Text>
+        <Text style={styles.dates}>{formatTripDates(trip)}</Text>
+        <Text style={styles.overlap}>일정이 {overlapDays}일 겹쳐요</Text>
+      </View>
+
+      <View style={styles.chips}>
+        <View style={styles.chip}>
+          <Text style={styles.chipText}>{intentLabel(trip.intent)}</Text>
+        </View>
+        {(user.travelStyles ?? []).map((style) => (
+          <View key={style} style={styles.chip}>
+            <Text style={styles.chipText}>{style}</Text>
           </View>
         ))}
       </View>
+
+      {trip.note ? (
+        <Text style={styles.note} numberOfLines={3}>
+          {trip.note}
+        </Text>
+      ) : null}
     </>
   );
 }
@@ -101,6 +128,10 @@ function CardContent({ profile }) {
 const styles = StyleSheet.create({
   card: {
     position: "absolute",
+    // Both cards need the same anchor. Without an explicit top, the layout
+    // engine centres each absolute child by its own height, so the shorter
+    // card behind drifts up and peeks out above the one on top.
+    top: 0,
     width: "100%",
     borderRadius: 20,
     padding: 24,
@@ -113,32 +144,55 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   cardBehind: {
-    top: 8,
-    transform: [{ scale: 0.96 }],
+    transform: [{ scale: 0.96 }, { translateY: 8 }],
   },
   avatar: {
-    fontSize: 64,
     marginBottom: 12,
+  },
+  moderation: {
+    position: "absolute",
+    top: 10,
+    right: 14,
+    zIndex: 20,
   },
   name: {
     fontSize: 22,
     fontWeight: "600",
     color: colors.text,
   },
-  bio: {
-    fontSize: 16,
-    color: colors.textMuted,
-    marginTop: 8,
-    marginBottom: 16,
-    textAlign: "center",
+  tripBox: {
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginTop: 14,
+    alignSelf: "stretch",
   },
-  interests: {
+  destination: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  dates: {
+    fontSize: 14,
+    color: colors.textMuted,
+    marginTop: 4,
+  },
+  overlap: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.primary,
+    marginTop: 6,
+  },
+  chips: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
     gap: 8,
+    marginTop: 14,
   },
-  interestChip: {
+  chip: {
     backgroundColor: "#fff",
     borderRadius: 14,
     paddingVertical: 6,
@@ -146,13 +200,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  interestText: {
+  chipText: {
     fontSize: 13,
     color: colors.textMuted,
   },
+  note: {
+    fontSize: 15,
+    color: colors.textMuted,
+    marginTop: 14,
+    textAlign: "center",
+    lineHeight: 21,
+  },
   badge: {
     position: "absolute",
-    top: 24,
+    top: 52,
     borderWidth: 3,
     borderRadius: 8,
     paddingVertical: 4,

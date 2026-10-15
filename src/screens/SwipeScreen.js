@@ -1,47 +1,63 @@
 import { Alert, ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
 import { useDiscoverPool } from "../hooks/useDiscoverPool";
-import { performSwipe } from "../firebase/swipes";
+import { recordSwipe } from "../firebase/swipes";
 import SwipeCard from "../components/SwipeCard";
 import { colors } from "../theme";
 
 export default function SwipeScreen() {
+  const navigation = useNavigation();
   const { currentUser } = useAuth();
-  const { profiles, loading, removeProfile } = useDiscoverPool(currentUser);
+  const { candidates, loading, hasTrips, removeCandidate } = useDiscoverPool();
 
-  async function handleSwiped(profile, direction) {
-    removeProfile(profile.id);
+  // A mutual like is matched by a Cloud Function, so there's nothing to
+  // announce here — MatchesProvider alerts when the match arrives.
+  async function handleSwiped(candidate, direction) {
+    removeCandidate(candidate.user.id);
     try {
-      const matched = await performSwipe(currentUser.id, profile.id, direction);
-      if (direction === "like" && matched) {
-        Alert.alert("매칭 성공! 💕", `${profile.name}님과 매칭됐어요. 채팅 탭에서 대화를 시작해보세요.`);
-      }
+      await recordSwipe(currentUser.id, candidate.user.id, direction);
     } catch {
       Alert.alert("오류", "스와이프를 처리하지 못했어요. 다시 시도해주세요.");
     }
   }
 
-  const visible = profiles.slice(0, 2);
+  const visible = candidates.slice(0, 2);
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>둘러보기</Text>
+      <Text style={styles.subtitle}>내 여행과 일정이 겹치는 사람들이에요</Text>
 
       <View style={styles.deck}>
         {loading ? (
           <ActivityIndicator color={colors.primary} size="large" />
+        ) : !hasTrips ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.empty}>
+              먼저 여행을 등록해주세요.{"\n"}같은 날 같은 곳에 가는 사람을 찾아드려요 ✈️
+            </Text>
+            <Pressable
+              style={styles.emptyButton}
+              onPress={() => navigation.navigate("Trips", { screen: "TripForm" })}
+            >
+              <Text style={styles.emptyButtonText}>여행 등록하러 가기</Text>
+            </Pressable>
+          </View>
         ) : visible.length === 0 ? (
-          <Text style={styles.empty}>더 이상 프로필이 없어요.{"\n"}나중에 다시 확인해보세요!</Text>
+          <Text style={styles.empty}>
+            지금은 일정이 겹치는 사람이 없어요.{"\n"}여행을 더 등록하거나 나중에 다시 확인해보세요!
+          </Text>
         ) : (
           visible
             .slice()
             .reverse()
-            .map((profile, i) => (
+            .map((candidate, i) => (
               <SwipeCard
-                key={profile.id}
-                profile={profile}
+                key={candidate.user.id}
+                candidate={candidate}
                 isTop={i === visible.length - 1}
-                onSwiped={(direction) => handleSwiped(profile, direction)}
+                onSwiped={(direction) => handleSwiped(candidate, direction)}
               />
             ))
         )}
@@ -79,18 +95,41 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "bold",
     color: colors.text,
-    marginBottom: 16,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: colors.textMuted,
+    marginTop: 4,
+    marginBottom: 12,
   },
   deck: {
     flex: 1,
     width: "100%",
     justifyContent: "center",
     alignItems: "center",
+    // The cards inside are absolutely positioned from the top of this box.
+    paddingTop: 8,
+  },
+  emptyBox: {
+    alignItems: "center",
   },
   empty: {
     fontSize: 16,
     textAlign: "center",
     color: colors.textMuted,
+    lineHeight: 24,
+  },
+  emptyButton: {
+    marginTop: 20,
+    backgroundColor: colors.primary,
+    borderRadius: 22,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  emptyButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 15,
   },
   buttons: {
     flexDirection: "row",

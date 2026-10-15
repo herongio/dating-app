@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "./config";
 
 const usersCol = collection(db, "users");
@@ -14,9 +14,4 @@ export async function getUserProfile(uid) {
 
 export async function updateUserProfile(uid, updates) {
   await updateDoc(doc(usersCol, uid), updates);
-}
-
-export async function listAllUsers() {
-  const snap = await getDocs(usersCol);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }

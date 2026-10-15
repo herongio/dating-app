@@ -11,10 +11,17 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    // matchId / swipeId / friendRequest doc ids are "{uidA}_{uidB}" —
+    // matchId / swipeId / tripRequest / block doc ids are "{uidA}_{uidB}" —
     // Firebase Auth uids never contain "_", so splitting is safe.
     function idParts(id) {
       return id.split('_');
+    }
+
+    // blockPairs ids are the *sorted* uid pair, and rules can't sort, so
+    // check both orderings — exactly one of them can exist.
+    function isBlockedWith(other) {
+      return exists(/databases/$(database)/documents/blockPairs/$(request.auth.uid + '_' + other))
+        || exists(/databases/$(database)/documents/blockPairs/$(other + '_' + request.auth.uid));
     }
 
     match /users/{uid} {
@@ -23,41 +30,96 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Swipes are private to the swiper. Mutual likes are detected by the
+    // onSwipeCreated Cloud Function, which runs with admin credentials, so
+    // nobody can read who liked them before matching.
     match /swipes/{swipeId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && resource.data.swiperId == request.auth.uid;
       allow create: if isSignedIn()
         && request.resource.data.swiperId == request.auth.uid
-        && swipeId == request.resource.data.swiperId + '_' + request.resource.data.targetId;
+        && swipeId == request.resource.data.swiperId + '_' + request.resource.data.targetId
+        && !isBlockedWith(request.resource.data.targetId);
       allow update, delete: if false;
     }
 
+    // Written only by Cloud Functions (admin SDK bypasses these rules).
+    // Clients may update the denormalized chat-list preview fields.
     match /matches/{matchId} {
-      allow read: if isSignedIn() && request.auth.uid in idParts(matchId);
-      allow create: if isSignedIn()
+      // Checked against the document's own participants, not the doc id: on a
+      // collection query the {matchId} wildcard is null, so an id-based rule
+      // denies the chat list's array-contains query.
+      allow read: if isSignedIn() && request.auth.uid in resource.data.participants;
+      allow create, delete: if false;
+      allow update: if isSignedIn()
         && request.auth.uid in idParts(matchId)
-        && request.resource.data.participants.hasAll(idParts(matchId));
-      allow update: if isSignedIn() && request.auth.uid in idParts(matchId);
-      allow delete: if false;
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['lastMessage', 'lastMessageAt']);
 
       match /messages/{messageId} {
         allow read: if isSignedIn() && request.auth.uid in idParts(matchId);
         allow create: if isSignedIn()
           && request.auth.uid in idParts(matchId)
-          && request.resource.data.senderId == request.auth.uid;
+          && request.resource.data.senderId == request.auth.uid
+          && !exists(/databases/$(database)/documents/blockPairs/$(matchId));
         allow update, delete: if false;
       }
     }
 
-    match /friendRequests/{requestId} {
+    // Trips are public to signed-in users: finding fellow travellers is the
+    // whole point of the app, and a trip carries no more than a city and a
+    // date range.
+    match /trips/{tripId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // "같이 가요" — a request to travel together, tied to the two trips that
+    // overlap. Accepting it is what the onTripRequestResponded Cloud Function
+    // turns into a match.
+    match /tripRequests/{requestId} {
       allow read: if isSignedIn()
         && (resource.data.fromUserId == request.auth.uid || resource.data.toUserId == request.auth.uid);
       allow create: if isSignedIn()
         && request.resource.data.fromUserId == request.auth.uid
-        && requestId == request.resource.data.fromUserId + '_' + request.resource.data.toUserId;
+        && requestId == request.resource.data.fromUserId + '_' + request.resource.data.toUserId
+        && !isBlockedWith(request.resource.data.toUserId);
       allow update: if isSignedIn()
         && resource.data.toUserId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'respondedAt']);
       allow delete: if false;
+    }
+
+    // Only the blocker can see (or undo) their own blocks, so being blocked
+    // never tells you who did it.
+    match /blocks/{blockId} {
+      allow read, delete: if isSignedIn() && resource.data.blockerId == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.blockerId == request.auth.uid
+        && blockId == request.resource.data.blockerId + '_' + request.resource.data.blockedId;
+      allow update: if false;
+    }
+
+    // Symmetric mirror of `blocks`, maintained by the onBlockWritten Cloud
+    // Function. Both sides read it to hide each other; it carries the uid
+    // pair and nothing else.
+    match /blockPairs/{pairKey} {
+      allow read: if isSignedIn() && request.auth.uid in resource.data.users;
+      allow write: if false;
+    }
+
+    // Write-only from the app — reports are reviewed in the Firebase console.
+    match /reports/{reportId} {
+      allow create: if isSignedIn() && request.resource.data.reporterId == request.auth.uid;
+      allow read, update, delete: if false;
+    }
+
+    // Expo push tokens, kept out of the publicly readable user profile.
+    match /pushTokens/{uid} {
+      allow read, write: if isSelf(uid);
     }
   }
 }

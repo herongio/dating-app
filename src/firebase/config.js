@@ -1,6 +1,7 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
-import { getAuth, getReactNativePersistence, initializeAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { connectAuthEmulator, getAuth, getReactNativePersistence, initializeAuth } from "firebase/auth";
+import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
+import { connectStorageEmulator, getStorage } from "firebase/storage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const firebaseConfig = {
@@ -15,7 +16,8 @@ const firebaseConfig = {
 export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 // initializeAuth throws if it's already been called on this app instance —
-// which Metro's Fast Refresh can trigger by re-running this module.
+// which Metro's Fast Refresh can trigger by re-running this module. It also
+// rejects the React Native persistence on web, where getAuth is correct.
 let auth;
 try {
   auth = initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
@@ -25,3 +27,13 @@ try {
 export { auth };
 
 export const db = getFirestore(app);
+export const storage = getStorage(app);
+
+// Point at the local emulators instead of a real project. Lets the app run
+// with no Firebase account at all — see "에뮬레이터로 실행하기" in the README.
+if (process.env.EXPO_PUBLIC_FIREBASE_EMULATOR === "1") {
+  const host = process.env.EXPO_PUBLIC_EMULATOR_HOST ?? "127.0.0.1";
+  connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true });
+  connectFirestoreEmulator(db, host, 8080);
+  connectStorageEmulator(storage, host, 9199);
+}
