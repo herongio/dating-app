@@ -59,12 +59,27 @@ describe("date ranges", () => {
 });
 
 describe("intent", () => {
-  test("only compatible intents meet, with 'both' as the wildcard", () => {
+  test("companion-only is a closed pool: it matches itself and nothing else", () => {
     assert.equal(intentsOverlap("companion", "companion"), true);
-    assert.equal(intentsOverlap("dating", "dating"), true);
     assert.equal(intentsOverlap("companion", "dating"), false);
-    assert.equal(intentsOverlap("both", "companion"), true);
+    // The one that matters — "둘 다" must not bridge into the closed pool,
+    // or everyone who asked for company only gets dating approaches anyway.
+    assert.equal(intentsOverlap("companion", "both"), false);
+    assert.equal(intentsOverlap("both", "companion"), false);
+  });
+
+  test("dating and both stay mutually compatible", () => {
+    assert.equal(intentsOverlap("dating", "dating"), true);
     assert.equal(intentsOverlap("dating", "both"), true);
+    assert.equal(intentsOverlap("both", "both"), true);
+  });
+
+  test("the closed pool is symmetric, so order never changes the answer", () => {
+    for (const a of ["companion", "dating", "both"]) {
+      for (const b of ["companion", "dating", "both"]) {
+        assert.equal(intentsOverlap(a, b), intentsOverlap(b, a), `${a} vs ${b}`);
+      }
+    }
   });
 
   test("gender preference applies only when nobody is companion-only", () => {
@@ -92,6 +107,10 @@ describe("tripsMatch", () => {
 
   test("same city and dates but an opposed intent does not match", () => {
     assert.equal(tripsMatch(mine, trip("tokyo", "2026-09-01", "2026-09-07", "dating")), false);
+  });
+
+  test("a companion-only trip does not match someone open to both", () => {
+    assert.equal(tripsMatch(mine, trip("tokyo", "2026-09-01", "2026-09-07", "both")), false);
   });
 });
 

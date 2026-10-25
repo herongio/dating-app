@@ -3,25 +3,40 @@
 // both correct and free of timezone drift between travellers.
 
 export const TRIP_INTENTS = [
-  { value: "companion", label: "동행 구해요", hint: "같이 다닐 사람을 찾고 있어요" },
+  {
+    value: "companion",
+    label: "동행만 구해요",
+    hint: "같이 다닐 사람만 찾아요 · 만남을 찾는 분과는 매칭되지 않아요",
+  },
   { value: "dating", label: "만남 열려있어요", hint: "여행지에서 좋은 사람을 만나고 싶어요" },
   { value: "both", label: "둘 다 좋아요", hint: "동행이든 만남이든 열려있어요" },
 ];
+
+// The companion pool is closed, not merely preferred. Someone who ticked
+// "동행만" is never shown to — and never shown — anyone open to dating.
+export const CLOSED_INTENT = "companion";
 
 export function intentLabel(value) {
   return TRIP_INTENTS.find((i) => i.value === value)?.label ?? value;
 }
 
-// "both" is the wildcard, so a companion-seeker never lands in front of
-// someone who only wants to date, and vice versa.
+// "동행만" is a separate pool: it matches only itself, and "둘 다" does not
+// bridge into it. Letting "둘 다" through would halve the wait for a match but
+// hand every companion-seeker the one experience they opted out of — and in a
+// service where strangers travel together, that is the failure that empties
+// the app. "만남"과 "둘 다" are mutually compatible as before.
 export function intentsOverlap(a, b) {
-  return a === b || a === "both" || b === "both";
+  if (a === CLOSED_INTENT || b === CLOSED_INTENT) return a === b;
+  return true;
 }
 
 // Gender preference is a dating concern; applying it to a pure
 // companion-finding match would filter out perfectly good travel buddies.
+// With the closed pool above, a mixed companion/dating pair can no longer
+// reach this function at all — it stays symmetric so the rule holds even if
+// the pools are ever reopened.
 export function isDatingMatch(a, b) {
-  return a !== "companion" && b !== "companion";
+  return a !== CLOSED_INTENT && b !== CLOSED_INTENT;
 }
 
 export function toDateKey(date) {

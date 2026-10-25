@@ -35,6 +35,11 @@ const PEOPLE = [
     travelStyles: ["박물관·전시", "도시 산책"], budget: "moderate", pace: "packed",
   },
   {
+    uid: "hyewon", name: "혜원", age: 30, gender: "female", avatar: "👩",
+    bio: "오사카에서 좋은 인연 만나면 좋겠어요.",
+    travelStyles: ["야경·술 한잔", "맛집 탐방"], budget: "comfort", pace: "balanced",
+  },
+  {
     uid: "jihun", name: "지훈", age: 29, gender: "male", avatar: "🧔",
     bio: "첫 도쿄라 같이 다닐 분 찾아요.",
     travelStyles: ["액티비티", "야경·술 한잔"], budget: "budget", pace: "balanced",
@@ -46,19 +51,25 @@ const PEOPLE = [
   },
 ];
 
+// Laid out so both intent pools are visible on screen: the Tokyo trip is open
+// to "둘 다" and fills up, while the Osaka trip is 동행만 and shows only the
+// other 동행만 traveller — 혜원, who is open to dating in the same city on the
+// same dates, must NOT appear under it. That absence is the feature.
 const TRIPS = [
-  { id: "demoTokyo", ownerId: "demo", destinationId: "tokyo", start: 7, end: 13, intent: "companion",
+  { id: "demoTokyo", ownerId: "demo", destinationId: "tokyo", start: 7, end: 13, intent: "both",
     note: "신주쿠 숙소예요. 맛집 위주로 천천히 다닐 계획입니다." },
-  { id: "demoJeju", ownerId: "demo", destinationId: "jeju", start: 40, end: 43, intent: "both",
-    note: "렌터카 빌려서 서쪽 해안 돌 예정이에요." },
+  { id: "demoOsaka", ownerId: "demo", destinationId: "osaka", start: 40, end: 43, intent: "companion",
+    note: "오사카는 동행만 구해요. 난바 쪽 숙소입니다." },
   { id: "seoyeonTokyo", ownerId: "seoyeon", destinationId: "tokyo", start: 11, end: 18, intent: "both",
     note: "시부야 근처에 묵어요. 라멘 같이 드실 분!" },
-  { id: "minjunTokyo", ownerId: "minjun", destinationId: "tokyo", start: 12, end: 16, intent: "companion",
-    note: "모리 미술관이랑 테마파크 갈 사람 구해요." },
   { id: "jihunTokyo", ownerId: "jihun", destinationId: "tokyo", start: 9, end: 14, intent: "both",
     note: "첫 도쿄예요. 저녁에 이자카야 같이 가실 분!" },
   { id: "yunaTokyo", ownerId: "yuna", destinationId: "tokyo", start: 8, end: 12, intent: "both",
     note: "카페 투어 좋아하시는 분 환영이에요 ☕" },
+  { id: "minjunOsaka", ownerId: "minjun", destinationId: "osaka", start: 39, end: 44, intent: "companion",
+    note: "오사카 미술관이랑 테마파크 갈 사람 구해요." },
+  { id: "hyewonOsaka", ownerId: "hyewon", destinationId: "osaka", start: 40, end: 43, intent: "both",
+    note: "같은 날짜 오사카예요. 야경 보러 갈 사람 🌃" },
 ];
 
 async function seedPerson(person) {
@@ -69,12 +80,19 @@ async function seedPerson(person) {
     password: DEMO_PASSWORD,
     displayName: person.name,
   });
+  // Everyone is pre-verified: the point of the seed is the matching screens,
+  // not the verification screen, and an unverified account is held at it. The
+  // claim is what firestore.rules reads; the field is what the app reads.
+  await auth.setCustomUserClaims(person.uid, { verified: true });
+
   const { uid, ...profile } = person;
   await db.doc(`users/${uid}`).set({
     ...profile,
     // Everyone is open to any gender so the demo doesn't hinge on preference.
     preferredGender: "any",
     photoURL: null,
+    phoneVerified: true,
+    phoneVerifiedAt: new Date(),
     createdAt: new Date(),
   });
 }
@@ -134,6 +152,7 @@ async function main() {
 
   console.log(`seeded ${PEOPLE.length} people, ${TRIPS.length} trips`);
   console.log(`sign in as ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
+  console.log("expected: 도쿄(둘 다) → 서연·지훈·유나, 오사카(동행만) → 민준 only (혜원 is filtered)");
 }
 
 await main();

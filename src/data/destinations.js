@@ -2,6 +2,11 @@
 // works offline, and — more importantly — gives every trip a stable
 // `destinationId`. That turns "who else is going to Tokyo?" into a single
 // equality filter in Firestore rather than a geo range scan.
+//
+// The full catalog below is the *resolver*: `destinationById` must keep
+// answering for every id that was ever written to a trip. Which destinations
+// people may pick for a *new* trip is a separate, much shorter list — see
+// LAUNCH_DESTINATION_IDS.
 export const DESTINATIONS = [
   { id: "seoul", name: "서울", country: "대한민국", emoji: "🏙️", lat: 37.5665, lng: 126.978 },
   { id: "busan", name: "부산", country: "대한민국", emoji: "🌊", lat: 35.1796, lng: 129.0756 },
@@ -39,14 +44,44 @@ export const DESTINATIONS = [
 
 const BY_ID = new Map(DESTINATIONS.map((d) => [d.id, d]));
 
+// Matching needs a same-city *and* same-dates coincidence, so candidate
+// density falls off far faster than in a plain dating app. Spread over all 32
+// cities and a six-month booking window, it takes roughly 33,000 accounts
+// before a typical traveller sees anyone at all; concentrated on three cities
+// in one season it takes about 2,000. Until the user base clears that, the
+// catalog is the throttle: offer the corridor, not the world.
+export const LAUNCH_DESTINATION_IDS = ["osaka", "tokyo", "danang"];
+
+// "launch" (the default) offers only the corridor; "all" opens the catalog.
+// Set EXPO_PUBLIC_DESTINATION_SCOPE=all to widen it — no code change, and
+// trips already written to other cities keep resolving either way.
+export function destinationScope() {
+  return process.env.EXPO_PUBLIC_DESTINATION_SCOPE === "all" ? "all" : "launch";
+}
+
+export function isLaunchDestination(id) {
+  return LAUNCH_DESTINATION_IDS.includes(id);
+}
+
+// The destinations a new trip may be created in. `keepId` is the trip's
+// current destination when editing: an existing Paris trip must stay editable
+// without silently being moved to another city.
+export function availableDestinations(keepId = null) {
+  if (destinationScope() === "all") return DESTINATIONS;
+  const ids = new Set(LAUNCH_DESTINATION_IDS);
+  if (keepId) ids.add(keepId);
+  return DESTINATIONS.filter((d) => ids.has(d.id));
+}
+
 export function destinationById(id) {
   return BY_ID.get(id) ?? null;
 }
 
-export function searchDestinations(query) {
+export function searchDestinations(query, keepId = null) {
+  const pool = availableDestinations(keepId);
   const q = query.trim().toLowerCase();
-  if (!q) return DESTINATIONS;
-  return DESTINATIONS.filter(
+  if (!q) return pool;
+  return pool.filter(
     (d) => d.name.toLowerCase().includes(q) || d.country.toLowerCase().includes(q)
   );
 }

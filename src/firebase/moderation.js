@@ -1,4 +1,4 @@
-import { addDoc, collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { db } from "./config";
 
 const blocksCol = collection(db, "blocks");
@@ -50,8 +50,12 @@ export const REPORT_REASONS = [
   { value: "other", label: "기타" },
 ];
 
+// The doc id is the reporter/reported pair, so one person holds at most one
+// report per person and re-filing overwrites it rather than stacking. That is
+// what lets onReportWritten act on *distinct reporters* — a count nobody can
+// inflate on their own.
 export async function reportUser({ reporterId, reportedId, reason, detail = "" }) {
-  await addDoc(reportsCol, {
+  await setDoc(doc(reportsCol, `${reporterId}_${reportedId}`), {
     reporterId,
     reportedId,
     reason,

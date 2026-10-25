@@ -48,9 +48,13 @@ export default function ProfileScreen() {
       Alert.alert("알림", "이름과 나이를 입력해주세요.");
       return;
     }
+    if (!(Number.parseInt(age, 10) >= 19)) {
+      Alert.alert("저장할 수 없어요", "만 19세 이상만 이용할 수 있어요.");
+      return;
+    }
     updateProfile({
       name: name.trim(),
-      age: Number(age),
+      age: Number.parseInt(age, 10),
       bio: bio.trim(),
       gender,
       preferredGender,
