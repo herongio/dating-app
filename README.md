@@ -199,7 +199,7 @@ firebase login
 firebase use --add                # 위에서 만든 프로젝트 선택
 
 cd functions && npm install && cd ..
-firebase deploy --only firestore,storage:rules,functions
+npm run deploy:backend            # 배포 명령과 시크릿 설정은 4번 참고
 ```
 
 > **규칙 배포는 선택이 아니라 필수입니다.** 이 앱의 보안 모델(스와이프 비공개,
@@ -215,7 +215,38 @@ firebase deploy --only firestore,storage:rules,functions
 Functions는 `asia-northeast3`(서울) 리전에 배포됩니다. 다른 리전을 쓰려면
 [`functions/index.js`](./functions/index.js)의 `setGlobalOptions`를 바꾸세요.
 
-### 4. 앱 실행
+### 4. 배포
+
+```bash
+npx firebase functions:secrets:set PHONE_HASH_PEPPER  # 긴 무작위 문자열 (한 번)
+npm run deploy                                        # 규칙·색인·Functions·웹 호스팅
+npm run deploy:backend                                # 웹 빌드 없이 백엔드만
+```
+
+`npm run deploy`는 `expo export --platform web`으로 `dist/`를 만들어 Firebase
+Hosting에 올립니다. `.env`에 **실제 웹 앱 설정**이 들어 있어야 하고
+`EXPO_PUBLIC_FIREBASE_EMULATOR=1`이 남아 있으면 스크립트가 배포를 거부합니다 —
+에뮬레이터를 가리키는 웹 앱을 올리는 사고를 막기 위해서입니다.
+
+`PHONE_HASH_PEPPER`는 Secret Manager에 들어갑니다 (`functions/index.js`의
+`defineSecret`). 번호 해시가 전 국민 휴대폰 번호 레인보우 테이블이 되지 않게
+하는 값이라 평문 설정에 두지 않습니다. 에뮬레이터는 gitignore된
+`functions/.secret.local`에서 읽습니다.
+
+**SMS 공급자 없이 배포한 경우:** 배포 자체는 되지만 운영 환경에서 인증번호
+발송이 실패해 아무도 인증을 통과하지 못합니다. 그 사이 테스트 계정은
+운영자가 직접 인증 처리할 수 있습니다.
+
+```bash
+GCLOUD_PROJECT=<project-id> npm run grant-verified -- someone@example.com
+```
+
+`confirmPhoneVerification`이 하는 두 쓰기(클레임 + `phoneVerified` 필드)만
+그대로 하므로 정상 흐름이 줄 수 없는 권한은 주지 못합니다. 공급자를 붙이려면
+[`functions/sms.js`](./functions/sms.js)의 `deliver`를 구현하고
+`SMS_ENDPOINT` / `SMS_API_KEY` / `SMS_SENDER`를 `defineSecret`으로 바인딩하세요.
+
+### 5. 앱 실행
 
 ```bash
 npm install

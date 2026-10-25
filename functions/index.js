@@ -5,6 +5,7 @@ const {
   onDocumentWritten,
 } = require("firebase-functions/v2/firestore");
 const { onCall } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 const { logger } = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
 const { FieldValue, getFirestore } = require("firebase-admin/firestore");
@@ -59,8 +60,22 @@ async function createMatch(uidA, uidB, source) {
 // the code never leaves the server, one handset can only ever verify one
 // account, and the resulting `verified` custom claim is the single thing the
 // Firestore rules check before letting anyone post a trip, swipe or message.
-exports.startPhoneVerification = onCall((request) => verification.start(db, request));
-exports.confirmPhoneVerification = onCall((request) => verification.confirm(db, request));
+//
+// The pepper lives in Secret Manager, not in plain function config: it is
+// what stops the phone-number hashes from being a lookup table over every
+// Korean mobile number. Set it once with
+//   firebase functions:secrets:set PHONE_HASH_PEPPER
+// and it reaches verification.js as process.env.PHONE_HASH_PEPPER. In the
+// emulator the value comes from functions/.secret.local.
+const PHONE_HASH_PEPPER = defineSecret("PHONE_HASH_PEPPER");
+const verificationOptions = { secrets: [PHONE_HASH_PEPPER] };
+
+exports.startPhoneVerification = onCall(verificationOptions, (request) =>
+  verification.start(db, request)
+);
+exports.confirmPhoneVerification = onCall(verificationOptions, (request) =>
+  verification.confirm(db, request)
+);
 
 exports.onSwipeCreated = onDocumentCreated("swipes/{swipeId}", async (event) => {
   const swipe = event.data?.data();
