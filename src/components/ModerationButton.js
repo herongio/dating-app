@@ -70,12 +70,13 @@ export default function ModerationButton({ user, tint = colors.textFaint, style 
         detail,
       });
       setReportOpen(false);
-      // Reporting and blocking usually go together, but forcing both would
-      // stop people reporting someone they still want to talk to.
-      Alert.alert("신고 접수됐어요", "검토 후 조치할게요. 이 사용자를 차단할까요?", [
-        { text: "아니요", style: "cancel" },
-        { text: "차단하기", style: "destructive", onPress: runBlock },
-      ]);
+      // The onReportWritten function blocks the pair server-side, so there is
+      // nothing left to ask: someone who just reported a stranger should not
+      // have to make a second decision to stop seeing them.
+      Alert.alert(
+        "신고 접수됐어요",
+        `${user.name}님은 차단 처리됐고, 검토 후 조치할게요.`
+      );
     } catch {
       Alert.alert("오류", "신고를 접수하지 못했어요. 다시 시도해주세요.");
     } finally {

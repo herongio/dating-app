@@ -62,7 +62,8 @@ export function AuthProvider({ children }) {
       }
       const profile = {
         name: name.trim(),
-        age: Number(age),
+        // firestore.rules requires `age is int`, and Number("27.5") is not.
+        age: Number.parseInt(age, 10),
         gender,
         preferredGender,
         bio: bio.trim(),
@@ -102,6 +103,18 @@ export function AuthProvider({ children }) {
     await signOut(auth);
   }
 
+  // Called after phone verification. The `verified` custom claim is minted
+  // server-side, and a device keeps using its cached ID token for up to an
+  // hour, so the token has to be force-refreshed before any gated write will
+  // pass — then the profile is re-read to pick up `phoneVerified`.
+  async function refreshSession() {
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser) return;
+    await firebaseUser.getIdToken(true);
+    const profile = await getUserProfile(firebaseUser.uid);
+    if (profile) setCurrentUser({ ...profile, email: firebaseUser.email });
+  }
+
   async function updateProfile(updates) {
     if (!currentUser) return;
     await updateUserProfile(currentUser.id, updates);
@@ -110,7 +123,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ isReady, currentUser, signUp, login, logout, updateProfile }}
+      value={{ isReady, currentUser, signUp, login, logout, updateProfile, refreshSession }}
     >
       {children}
     </AuthContext.Provider>

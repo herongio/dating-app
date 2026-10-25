@@ -41,6 +41,11 @@ export async function findTripCandidates(myTrips, { viewer, excludeIds = new Set
 
   return candidates
     .filter((c) => c.user)
+    // A suspended account keeps its trips — undoing a wrong suspension should
+    // not also delete someone's travel plans — so it is filtered out here, on
+    // the profile that was fetched anyway. Doing it in the query would need a
+    // third filter and a new composite index for no extra safety.
+    .filter((c) => !c.user.suspendedAt)
     .filter((c) => {
       if (!isDatingMatch(c.myTrip.intent, c.trip.intent)) return true;
       return preferenceAllows(viewer, c.user) && preferenceAllows(c.user, viewer);

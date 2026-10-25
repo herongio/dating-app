@@ -38,6 +38,12 @@ export default function SignUpScreen({ navigation }) {
       Alert.alert("알림", "필수 항목을 모두 입력해주세요.");
       return;
     }
+    // Mirrors the firestore.rules age gate, so the refusal arrives as a
+    // sentence rather than as a permission error.
+    if (!(Number.parseInt(age, 10) >= 19)) {
+      Alert.alert("가입할 수 없어요", "만 19세 이상만 이용할 수 있어요.");
+      return;
+    }
     setIsSubmitting(true);
     try {
       await signUp({ email, password, name, age, gender, preferredGender, bio });
@@ -70,7 +76,7 @@ export default function SignUpScreen({ navigation }) {
       <TextInput style={styles.input} placeholder="이름" value={name} onChangeText={setName} />
       <TextInput
         style={styles.input}
-        placeholder="나이"
+        placeholder="나이 (만 19세 이상)"
         keyboardType="number-pad"
         value={age}
         onChangeText={setAge}

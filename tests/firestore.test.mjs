@@ -41,8 +41,22 @@ beforeEach(async () => {
   await testEnv.clearFirestore();
 });
 
+// The default context is a *verified* account, because that is the only kind
+// that can do anything outward and almost every rule below is about something
+// else. The two gates themselves get their own contexts.
 function as(uid) {
+  return testEnv.authenticatedContext(uid, { verified: true }).firestore();
+}
+
+// Signed in, phone not yet verified — a brand-new account.
+function asUnverified(uid) {
   return testEnv.authenticatedContext(uid).firestore();
+}
+
+// Verified, then suspended by onReportWritten. Carries both claims, the way a
+// real suspended account does.
+function asSuspended(uid) {
+  return testEnv.authenticatedContext(uid, { verified: true, suspended: true }).firestore();
 }
 
 function seed(fn) {
@@ -296,23 +310,114 @@ describe("blockPairs are readable by both sides and writable by neither", () => 
   });
 });
 
-describe("reports are write-only", () => {
+describe("reports are write-only and one per pair", () => {
+  const report = (db, reporterId, reportedId, reason = "spam") =>
+    setDoc(doc(db, "reports", `${reporterId}_${reportedId}`), { reporterId, reportedId, reason });
+
   test("a report must name its own reporter and cannot be read back", async () => {
-    await assertSucceeds(
-      addDoc(collection(as(ALICE), "reports"), {
+    await assertSucceeds(report(as(ALICE), ALICE, BOB));
+    await assertFails(report(as(ALICE), MALLORY, BOB));
+    await assertFails(getDocs(collection(as(ALICE), "reports")));
+    await assertFails(getDoc(doc(as(ALICE), "reports", `${ALICE}_${BOB}`)));
+  });
+
+  // The id binding is the anti-abuse mechanism: without it one account could
+  // file twenty reports and cross the "distinct reporters" threshold alone.
+  test("a report cannot be filed at an id that does not match its uids", async () => {
+    await assertFails(
+      setDoc(doc(as(ALICE), "reports", "someRandomId"), {
         reporterId: ALICE,
         reportedId: BOB,
         reason: "spam",
       })
     );
+  });
+
+  test("re-filing overwrites the one report instead of stacking a second", async () => {
+    await assertSucceeds(report(as(ALICE), ALICE, BOB, "spam"));
+    await assertSucceeds(report(as(ALICE), ALICE, BOB, "harassment"));
+  });
+
+  test("nobody can report themselves into a suspension", async () => {
+    await assertFails(report(as(ALICE), ALICE, ALICE));
+  });
+
+  test("the moderation tallies and queue are invisible to the app", async () => {
+    await seed((db) => setDoc(doc(db, "moderationCounters", BOB), { distinctReporters: 2 }));
+    await seed((db) => setDoc(doc(db, "moderationQueue", BOB), { status: "awaiting_review" }));
+    await assertFails(getDoc(doc(as(BOB), "moderationCounters", BOB)));
+    await assertFails(getDoc(doc(as(BOB), "moderationQueue", BOB)));
+  });
+});
+
+describe("a suspended account can look but not act", () => {
+  beforeEach(() =>
+    seed(async (db) => {
+      await setDoc(doc(db, "users", MALLORY), { name: "Mallory", suspendedAt: new Date() });
+      await setDoc(doc(db, "trips", "mTrip"), {
+        ownerId: MALLORY,
+        destinationId: "tokyo",
+        startDate: "2026-09-01",
+        endDate: "2026-09-07",
+        intent: "both",
+      });
+      await setDoc(doc(db, "matches", `${ALICE}_${MALLORY}`), {
+        participants: [ALICE, MALLORY].sort(),
+      });
+    })
+  );
+
+  test("they keep read access, so they can see their threads and appeal", async () => {
+    await assertSucceeds(getDoc(doc(asSuspended(MALLORY), "users", ALICE)));
+    await assertSucceeds(getDocs(collection(asSuspended(MALLORY), "trips")));
+  });
+
+  test("they cannot create or edit a trip", async () => {
     await assertFails(
-      addDoc(collection(as(ALICE), "reports"), {
-        reporterId: MALLORY,
-        reportedId: BOB,
-        reason: "spam",
+      addDoc(collection(asSuspended(MALLORY), "trips"), {
+        ownerId: MALLORY,
+        destinationId: "osaka",
+        startDate: "2026-10-01",
+        endDate: "2026-10-05",
+        intent: "both",
       })
     );
-    await assertFails(getDocs(collection(as(ALICE), "reports")));
+    await assertFails(updateDoc(doc(asSuspended(MALLORY), "trips", "mTrip"), { note: "still here" }));
+  });
+
+  test("they cannot swipe, request a trip, or send a message", async () => {
+    await assertFails(
+      setDoc(doc(asSuspended(MALLORY), "swipes", `${MALLORY}_${ALICE}`), {
+        swiperId: MALLORY,
+        targetId: ALICE,
+        direction: "like",
+      })
+    );
+    await assertFails(
+      setDoc(doc(asSuspended(MALLORY), "tripRequests", `${MALLORY}_${ALICE}`), {
+        fromUserId: MALLORY,
+        toUserId: ALICE,
+        status: "pending",
+      })
+    );
+    await assertFails(
+      addDoc(collection(asSuspended(MALLORY), "matches", `${ALICE}_${MALLORY}`, "messages"), {
+        senderId: MALLORY,
+        text: "hello again",
+      })
+    );
+  });
+
+  test("an account without the claim is unaffected", async () => {
+    await assertSucceeds(
+      addDoc(collection(as(ALICE), "trips"), {
+        ownerId: ALICE,
+        destinationId: "tokyo",
+        startDate: "2026-09-01",
+        endDate: "2026-09-07",
+        intent: "both",
+      })
+    );
   });
 });
 
@@ -326,10 +431,114 @@ describe("push tokens are private to their owner", () => {
   });
 });
 
-test("profiles stay readable to signed-in users and writable only by their owner", async () => {
-  await seed((db) => setDoc(doc(db, "users", ALICE), { name: "Alice" }));
-  await assertSucceeds(getDoc(doc(as(BOB), "users", ALICE)));
-  await assertFails(updateDoc(doc(as(BOB), "users", ALICE), { name: "hacked" }));
-  await assertSucceeds(updateDoc(doc(as(ALICE), "users", ALICE), { name: "Alice K" }));
-  assert.ok(true);
+describe("profiles", () => {
+  beforeEach(() => seed((db) => setDoc(doc(db, "users", ALICE), { name: "Alice", age: 28 })));
+
+  test("readable to signed-in users, writable only by their owner", async () => {
+    await assertSucceeds(getDoc(doc(as(BOB), "users", ALICE)));
+    await assertFails(updateDoc(doc(as(BOB), "users", ALICE), { name: "hacked" }));
+    await assertSucceeds(updateDoc(doc(as(ALICE), "users", ALICE), { name: "Alice K" }));
+  });
+
+  test("an unverified account can still create and edit its own profile", async () => {
+    // Verification happens after sign-up, so gating the profile itself would
+    // lock everyone out of the screen they need before they can verify.
+    await assertSucceeds(
+      setDoc(doc(asUnverified(BOB), "users", BOB), { name: "Bob", age: 30 })
+    );
+  });
+
+  test("a new profile cannot declare itself verified or unsuspended", async () => {
+    await assertFails(
+      setDoc(doc(as(BOB), "users", BOB), { name: "Bob", age: 30, phoneVerified: true })
+    );
+    await assertFails(
+      setDoc(doc(as(BOB), "users", BOB), { name: "Bob", age: 30, suspendedAt: null })
+    );
+    await assertSucceeds(setDoc(doc(as(BOB), "users", BOB), { name: "Bob", age: 30 }));
+  });
+
+  test("a minor cannot create a profile, and nobody can edit into one", async () => {
+    await assertFails(setDoc(doc(as(BOB), "users", BOB), { name: "Teen", age: 17 }));
+    await assertFails(setDoc(doc(as(BOB), "users", BOB), { name: "NoAge" }));
+    await assertFails(updateDoc(doc(as(ALICE), "users", ALICE), { age: 15 }));
+  });
+
+  // Without this the client-side suspension filter is worthless: the
+  // suspended user owns the document it reads.
+  test("nobody can clear their own suspension or grant themselves verification", async () => {
+    await seed((db) =>
+      setDoc(doc(db, "users", MALLORY), { name: "Mallory", age: 33, suspendedAt: new Date() })
+    );
+    await assertFails(
+      updateDoc(doc(asSuspended(MALLORY), "users", MALLORY), { suspendedAt: null })
+    );
+    await assertFails(
+      updateDoc(doc(as(BOB), "users", BOB), { phoneVerified: true })
+    );
+    await assertFails(
+      updateDoc(doc(as(ALICE), "users", ALICE), { identityVerified: true, birthDate: "1990-01-01" })
+    );
+  });
+});
+
+describe("verification gates every outward action", () => {
+  beforeEach(() =>
+    seed(async (db) => {
+      await setDoc(doc(db, "users", BOB), { name: "Bob", age: 30 });
+      await setDoc(doc(db, "matches", MATCH), { participants: [ALICE, BOB].sort() });
+    })
+  );
+
+  const newTrip = (ownerId) => ({
+    ownerId,
+    destinationId: "tokyo",
+    startDate: "2026-09-01",
+    endDate: "2026-09-07",
+    intent: "both",
+  });
+
+  test("an unverified account cannot post a trip", async () => {
+    await assertFails(addDoc(collection(asUnverified(ALICE), "trips"), newTrip(ALICE)));
+    await assertSucceeds(addDoc(collection(as(ALICE), "trips"), newTrip(ALICE)));
+  });
+
+  test("an unverified account cannot swipe or ask to travel together", async () => {
+    await assertFails(
+      setDoc(doc(asUnverified(ALICE), "swipes", `${ALICE}_${BOB}`), {
+        swiperId: ALICE,
+        targetId: BOB,
+        direction: "like",
+      })
+    );
+    await assertFails(
+      setDoc(doc(asUnverified(ALICE), "tripRequests", `${ALICE}_${BOB}`), {
+        fromUserId: ALICE,
+        toUserId: BOB,
+        status: "pending",
+      })
+    );
+  });
+
+  test("an unverified account cannot send a message", async () => {
+    await assertFails(
+      addDoc(collection(asUnverified(ALICE), "matches", MATCH, "messages"), {
+        senderId: ALICE,
+        text: "hi",
+      })
+    );
+  });
+
+  test("an unverified account can still browse — that is the whole funnel", async () => {
+    await assertSucceeds(getDocs(collection(asUnverified(ALICE), "trips")));
+    await assertSucceeds(getDoc(doc(asUnverified(ALICE), "users", BOB)));
+  });
+
+  test("the verification collections are invisible to the client", async () => {
+    await seed((db) => setDoc(doc(db, "phoneVerifications", ALICE), { codeHash: "x" }));
+    await seed((db) => setDoc(doc(db, "phoneHashes", "deadbeef"), { uid: ALICE }));
+    await assertFails(getDoc(doc(as(ALICE), "phoneVerifications", ALICE)));
+    await assertFails(setDoc(doc(as(ALICE), "phoneVerifications", ALICE), { codeHash: "mine" }));
+    await assertFails(getDoc(doc(as(ALICE), "phoneHashes", "deadbeef")));
+  });
 });

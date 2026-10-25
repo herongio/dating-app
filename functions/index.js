@@ -4,11 +4,14 @@ const {
   onDocumentUpdated,
   onDocumentWritten,
 } = require("firebase-functions/v2/firestore");
+const { onCall } = require("firebase-functions/v2/https");
 const { logger } = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
 const { FieldValue, getFirestore } = require("firebase-admin/firestore");
 const { pairId, directedId } = require("./ids");
 const { sendPushTo } = require("./push");
+const { handleReportWritten } = require("./moderation");
+const verification = require("./verification");
 
 initializeApp();
 const db = getFirestore();
@@ -18,6 +21,14 @@ setGlobalOptions({ region: "asia-northeast3", maxInstances: 10 });
 async function isPairBlocked(uidA, uidB) {
   const snap = await db.collection("blockPairs").doc(pairId(uidA, uidB)).get();
   return snap.exists;
+}
+
+// Read from the user doc rather than the custom claim: a claim only reaches a
+// device on its next token refresh, and a match must never be created for an
+// account that was suspended a minute ago.
+async function isSuspended(uid) {
+  const snap = await db.collection("users").doc(uid).get();
+  return snap.exists && snap.data().suspendedAt != null;
 }
 
 async function displayName(uid) {
@@ -30,6 +41,8 @@ async function displayName(uid) {
 // like for itself.
 async function createMatch(uidA, uidB, source) {
   if (await isPairBlocked(uidA, uidB)) return null;
+  const suspended = await Promise.all([isSuspended(uidA), isSuspended(uidB)]);
+  if (suspended.some(Boolean)) return null;
   const id = pairId(uidA, uidB);
   await db.collection("matches").doc(id).set(
     {
@@ -41,6 +54,13 @@ async function createMatch(uidA, uidB, source) {
   );
   return id;
 }
+
+// Phone verification. Callables rather than client-side Firebase phone auth:
+// the code never leaves the server, one handset can only ever verify one
+// account, and the resulting `verified` custom claim is the single thing the
+// Firestore rules check before letting anyone post a trip, swipe or message.
+exports.startPhoneVerification = onCall((request) => verification.start(db, request));
+exports.confirmPhoneVerification = onCall((request) => verification.confirm(db, request));
 
 exports.onSwipeCreated = onDocumentCreated("swipes/{swipeId}", async (event) => {
   const swipe = event.data?.data();
@@ -96,6 +116,15 @@ exports.onBlockWritten = onDocumentWritten("blocks/{blockId}", async (event) => 
   } else {
     await pairRef.delete();
   }
+});
+
+// Reports are handled in one place so that a report always has the same three
+// consequences — the pair is hidden from each other, the tally is recomputed,
+// and the account is suspended once enough distinct people have said the same
+// thing. See functions/moderation.js for the thresholds.
+exports.onReportWritten = onDocumentWritten("reports/{reportId}", async (event) => {
+  if (!event.data?.after.exists) return;
+  await handleReportWritten(db, event.params.reportId);
 });
 
 exports.onMatchCreated = onDocumentCreated("matches/{matchId}", async (event) => {

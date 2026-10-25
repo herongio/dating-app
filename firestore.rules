@@ -17,6 +17,24 @@ service cloud.firestore {
       return id.split('_');
     }
 
+    // Suspended accounts keep read access — they can see their conversations
+    // and appeal — but may not act outward. Read from the token rather than
+    // the user doc so this costs no document read on every write; the Cloud
+    // Functions check `users/{uid}.suspendedAt` as well, which closes the gap
+    // until the device refreshes its token.
+    function isActive() {
+      return isSignedIn() && request.auth.token.get('suspended', false) != true;
+    }
+
+    // Every outward action — posting a trip, swiping, asking to travel
+    // together, sending a message — requires a verified phone. It is the one
+    // cost that makes a throwaway account expensive, and in a service where
+    // strangers agree to travel together that cost is the product.
+    // confirmPhoneVerification sets this claim; nothing the client writes can.
+    function isVerified() {
+      return isActive() && request.auth.token.get('verified', false) == true;
+    }
+
     // blockPairs ids are the *sorted* uid pair, and rules can't sort, so
     // check both orderings — exactly one of them can exist.
     function isBlockedWith(other) {
@@ -24,9 +42,35 @@ service cloud.firestore {
         || exists(/databases/$(database)/documents/blockPairs/$(other + '_' + request.auth.uid));
     }
 
+    // Fields the server owns. A profile is self-written, so without this the
+    // holder of a suspended account could simply delete their own
+    // `suspendedAt` and reappear in everyone's candidate list — the client
+    // reads that field to filter them out.
+    function serverOwnedUserFields() {
+      return ['suspendedAt', 'suspendedReason', 'phoneVerified', 'phoneVerifiedAt',
+              'identityVerified', 'birthDate'];
+    }
+
+    // 만 19세 — the service has dating intent, so minors are out of scope
+    // rather than merely discouraged. A self-reported age is a gate, not
+    // proof; see functions/identity.js for the 본인인증 seam that replaces it.
+    function isAdultProfile() {
+      return request.resource.data.age is int && request.resource.data.age >= 19;
+    }
+
     match /users/{uid} {
       allow read: if isSignedIn();
-      allow create, update: if isSelf(uid);
+      // On create there is no prior document to diff against, so the
+      // server-owned fields are rejected by absence instead — otherwise a
+      // brand-new profile could simply declare itself verified, which is what
+      // the client reads to decide whether to show the verification screen.
+      allow create: if isSelf(uid)
+        && isAdultProfile()
+        && !request.resource.data.keys().hasAny(serverOwnedUserFields());
+      allow update: if isSelf(uid)
+        && isAdultProfile()
+        && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(serverOwnedUserFields());
       allow delete: if false;
     }
 
@@ -35,7 +79,7 @@ service cloud.firestore {
     // nobody can read who liked them before matching.
     match /swipes/{swipeId} {
       allow read: if isSignedIn() && resource.data.swiperId == request.auth.uid;
-      allow create: if isSignedIn()
+      allow create: if isVerified()
         && request.resource.data.swiperId == request.auth.uid
         && swipeId == request.resource.data.swiperId + '_' + request.resource.data.targetId
         && !isBlockedWith(request.resource.data.targetId);
@@ -57,7 +101,7 @@ service cloud.firestore {
 
       match /messages/{messageId} {
         allow read: if isSignedIn() && request.auth.uid in idParts(matchId);
-        allow create: if isSignedIn()
+        allow create: if isVerified()
           && request.auth.uid in idParts(matchId)
           && request.resource.data.senderId == request.auth.uid
           && !exists(/databases/$(database)/documents/blockPairs/$(matchId));
@@ -70,8 +114,8 @@ service cloud.firestore {
     // date range.
     match /trips/{tripId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update: if isSignedIn()
+      allow create: if isVerified() && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isVerified()
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.ownerId == resource.data.ownerId;
       allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
@@ -83,7 +127,7 @@ service cloud.firestore {
     match /tripRequests/{requestId} {
       allow read: if isSignedIn()
         && (resource.data.fromUserId == request.auth.uid || resource.data.toUserId == request.auth.uid);
-      allow create: if isSignedIn()
+      allow create: if isVerified()
         && request.resource.data.fromUserId == request.auth.uid
         && requestId == request.resource.data.fromUserId + '_' + request.resource.data.toUserId
         && !isBlockedWith(request.resource.data.toUserId);
@@ -111,15 +155,49 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Write-only from the app — reports are reviewed in the Firebase console.
+    // Write-only from the app. The doc id is bound to the reporter/reported
+    // pair, which is the whole anti-abuse mechanism: one person can hold only
+    // one report per person, so the "distinct reporters" count that
+    // onReportWritten suspends on cannot be inflated by a single account.
+    // Re-filing overwrites, so update is allowed to the same reporter — the id
+    // binding means neither uid can change.
     match /reports/{reportId} {
-      allow create: if isSignedIn() && request.resource.data.reporterId == request.auth.uid;
-      allow read, update, delete: if false;
+      allow create, update: if isSignedIn()
+        && request.resource.data.reporterId == request.auth.uid
+        && reportId == request.resource.data.reporterId + '_' + request.resource.data.reportedId
+        && request.resource.data.reportedId != request.auth.uid;
+      allow read, delete: if false;
+    }
+
+    // Maintained by onReportWritten with admin credentials. Nothing the app
+    // does should ever read these: telling someone how close they are to a
+    // suspension is telling them how to stay just under it.
+    match /moderationCounters/{uid} {
+      allow read, write: if false;
+    }
+
+    // The operator review queue for automatic suspensions.
+    match /moderationQueue/{uid} {
+      allow read, write: if false;
     }
 
     // Expo push tokens, kept out of the publicly readable user profile.
     match /pushTokens/{uid} {
       allow read, write: if isSelf(uid);
+    }
+
+    // Written and read only by the verification callables. The code lives
+    // here as a hash; if the client could read this doc the SMS would be
+    // decoration.
+    match /phoneVerifications/{uid} {
+      allow read, write: if false;
+    }
+
+    // One handset, one account. Keyed by a peppered hash rather than the
+    // number itself, so this is not a readable phone book even to the server
+    // operator — and it is not readable to anyone else at all.
+    match /phoneHashes/{hash} {
+      allow read, write: if false;
     }
   }
 }

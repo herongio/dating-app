@@ -1,12 +1,20 @@
 import { useState } from "react";
 import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { destinationById, searchDestinations } from "../data/destinations";
+import {
+  availableDestinations,
+  destinationById,
+  destinationScope,
+  searchDestinations,
+} from "../data/destinations";
 import { colors } from "../theme";
 
 export default function DestinationPicker({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const selected = destinationById(value);
+  // Searching a three-item list is friction, not help.
+  const showSearch = availableDestinations(value).length > 8;
+  const scoped = destinationScope() === "launch";
 
   function pick(destination) {
     onChange(destination.id);
@@ -32,16 +40,18 @@ export default function DestinationPicker({ value, onChange }) {
             </Pressable>
           </View>
 
-          <TextInput
-            style={styles.search}
-            value={query}
-            onChangeText={setQuery}
-            placeholder="도시 또는 나라 검색"
-            autoCorrect={false}
-          />
+          {showSearch && (
+            <TextInput
+              style={styles.search}
+              value={query}
+              onChangeText={setQuery}
+              placeholder="도시 또는 나라 검색"
+              autoCorrect={false}
+            />
+          )}
 
           <FlatList
-            data={searchDestinations(query)}
+            data={searchDestinations(query, value)}
             keyExtractor={(item) => item.id}
             keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => (
@@ -54,6 +64,15 @@ export default function DestinationPicker({ value, onChange }) {
                 <Text style={styles.rowCountry}>{item.country}</Text>
               </Pressable>
             )}
+            ListFooterComponent={
+              scoped ? (
+                <Text style={styles.note}>
+                  지금은 이 세 도시에서만 동행을 찾을 수 있어요.{"\n"}
+                  한 도시에 사람이 모여야 일정이 겹치는 분을 만날 수 있어서,
+                  도시를 먼저 좁혔어요. 순차적으로 늘려갈게요 ✈️
+                </Text>
+              ) : null
+            }
             ListEmptyComponent={
               <Text style={styles.empty}>
                 찾는 여행지가 없나요?{"\n"}지금은 인기 여행지만 지원해요.
@@ -148,5 +167,12 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 40,
     lineHeight: 22,
+  },
+  note: {
+    color: colors.textFaint,
+    fontSize: 13,
+    lineHeight: 20,
+    paddingHorizontal: 12,
+    paddingTop: 20,
   },
 });

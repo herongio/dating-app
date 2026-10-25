@@ -10,8 +10,8 @@
     "web": "expo start --web",
     "test": "npm run test:unit && npm run test:rules && npm run test:functions",
     "test:rules": "firebase emulators:exec --only firestore --project demo-dating-app \"node --test tests/firestore.test.mjs\"",
-    "test:functions": "firebase emulators:exec --only functions,firestore --project demo-dating-app \"node --test --test-concurrency=1 tests/functions.test.mjs\"",
-    "test:unit": "node --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/trips.test.mjs",
+    "test:functions": "firebase emulators:exec --only functions,firestore,auth --project demo-dating-app \"node --test --test-concurrency=1 tests/functions.test.mjs\"",
+    "test:unit": "node --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/trips.test.mjs tests/destinations.test.mjs",
     "emulators": "firebase emulators:start --only auth,firestore,storage,functions --project demo-dating-app",
     "seed": "FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 GCLOUD_PROJECT=demo-dating-app node scripts/seed-emulator.mjs"
   },

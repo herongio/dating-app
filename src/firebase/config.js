@@ -1,6 +1,7 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { connectAuthEmulator, getAuth, getReactNativePersistence, initializeAuth } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
+import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 import { connectStorageEmulator, getStorage } from "firebase/storage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -28,6 +29,9 @@ export { auth };
 
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+// The region must match setGlobalOptions in functions/index.js, or every
+// callable 404s.
+export const functions = getFunctions(app, "asia-northeast3");
 
 // Point at the local emulators instead of a real project. Lets the app run
 // with no Firebase account at all — see "에뮬레이터로 실행하기" in the README.
@@ -36,4 +40,5 @@ if (process.env.EXPO_PUBLIC_FIREBASE_EMULATOR === "1") {
   connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true });
   connectFirestoreEmulator(db, host, 8080);
   connectStorageEmulator(storage, host, 9199);
+  connectFunctionsEmulator(functions, host, 5001);
 }
