@@ -6,3 +6,6 @@ web-build/
 .DS_Store
 .env
 .firebase/
+
+# local values for defineSecret() params in the emulator
+functions/.secret.local
